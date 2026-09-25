@@ -1,0 +1,787 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Middagsbanken</title>
+<style>
+  [hidden] { display: none !important; }
+  img { max-width: 100%; }
+  :root {
+    --bg: #F6F5F0;
+    --surface: #FFFFFF;
+    --surface-2: #EFEEE7;
+    --text: #232A24;
+    --text-muted: #5B6459;
+    --accent: #3F6B4F;
+    --accent-ink: #FFFFFF;
+    --accent-soft: #E3EEE6;
+    --amber: #B4791F;
+    --amber-soft: #F5E9D6;
+    --border: #DCE0D8;
+    --danger: #A23B33;
+    --danger-soft: #F5E1DE;
+    --shadow: 0 1px 2px rgba(35,42,36,0.06), 0 6px 20px -12px rgba(35,42,36,0.25);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14180F;
+      --surface: #1C2118;
+      --surface-2: #232920;
+      --text: #EAEDE6;
+      --text-muted: #9CA894;
+      --accent: #74A987;
+      --accent-ink: #0E140F;
+      --accent-soft: #26352A;
+      --amber: #D7A24E;
+      --amber-soft: #332A19;
+      --border: #313828;
+      --danger: #D98A80;
+      --danger-soft: #3A2420;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 6px 20px -12px rgba(0,0,0,0.5);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14180F;
+    --surface: #1C2118;
+    --surface-2: #232920;
+    --text: #EAEDE6;
+    --text-muted: #9CA894;
+    --accent: #74A987;
+    --accent-ink: #0E140F;
+    --accent-soft: #26352A;
+    --amber: #D7A24E;
+    --amber-soft: #332A19;
+    --border: #313828;
+    --danger: #D98A80;
+    --danger-soft: #3A2420;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 6px 20px -12px rgba(0,0,0,0.5);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Work Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+    padding-inline: 16px;
+    padding-block: 20px 48px;
+  }
+  h1, h2, h3 { font-family: "Fraunces", Georgia, serif; text-wrap: balance; margin: 0; }
+  a { color: var(--accent); }
+
+  .wrap { max-width: 880px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+
+  header.top { display: flex; flex-direction: column; gap: 4px; }
+  header.top h1 { font-size: 1.9rem; font-weight: 600; letter-spacing: -0.01em; }
+  header.top p { margin: 0; color: var(--text-muted); font-size: 0.92rem; }
+
+  nav.tabs {
+    display: flex; gap: 4px; background: var(--surface-2); padding: 4px;
+    border-radius: 12px; width: fit-content; max-width: 100%;
+  }
+  nav.tabs button {
+    font: inherit; font-weight: 600; font-size: 0.88rem; border: none; cursor: pointer;
+    padding: 8px 16px; border-radius: 9px; background: transparent; color: var(--text-muted);
+    transition: background .15s, color .15s;
+  }
+  nav.tabs button.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+
+  .panel { display: flex; flex-direction: column; gap: 16px; }
+  .panel[hidden] { display: none; }
+
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .search {
+    flex: 1 1 200px; min-width: 0; font: inherit; font-size: 0.9rem; padding: 9px 12px;
+    border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  }
+  select.sortsel {
+    font: inherit; font-size: 0.85rem; padding: 9px 10px; border-radius: 9px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  }
+  .btn {
+    font: inherit; font-weight: 600; font-size: 0.88rem; border-radius: 9px; cursor: pointer;
+    padding: 9px 15px; border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .btn.primary:hover { filter: brightness(1.05); }
+  .btn.danger { color: var(--danger); }
+  .btn.small { padding: 5px 10px; font-size: 0.78rem; }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .tagrow { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tagchip {
+    font-size: 0.76rem; font-weight: 600; padding: 4px 10px; border-radius: 100px;
+    background: var(--accent-soft); color: var(--accent); border: 1px solid transparent; cursor: pointer;
+  }
+  .tagchip.on { background: var(--accent); color: var(--accent-ink); }
+  .tagchip.static { cursor: default; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 14px 16px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 8px;
+  }
+  .card h3 { font-size: 1.08rem; font-weight: 600; }
+  .card .meta { font-size: 0.78rem; color: var(--text-muted); display: flex; gap: 10px; flex-wrap: wrap; }
+  .card .actions { display: flex; gap: 6px; margin-top: 4px; }
+
+  .weekcard {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 12px 14px; display: flex; align-items: flex-start; gap: 12px; cursor: pointer;
+  }
+  .weekcard.on { border-color: var(--accent); background: var(--accent-soft); }
+  .weekcard input[type=checkbox] { margin-top: 3px; width: 17px; height: 17px; accent-color: var(--accent); flex-shrink: 0; }
+  .weekcard .body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .weekcard h3 { font-size: 1rem; font-weight: 600; }
+
+  .empty {
+    border: 1px dashed var(--border); border-radius: 14px; padding: 28px 16px;
+    text-align: center; color: var(--text-muted); font-size: 0.9rem;
+  }
+
+  .shoplist {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 16px; display: flex; flex-direction: column; gap: 14px; box-shadow: var(--shadow);
+  }
+  .shoplist .cathead {
+    font-family: "Fraunces", serif; font-size: 0.95rem; font-weight: 600; color: var(--amber);
+    border-bottom: 1px solid var(--border); padding-bottom: 4px; margin-bottom: 6px;
+  }
+  .shoplist ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  .shoplist li {
+    display: flex; align-items: baseline; gap: 8px; font-size: 0.92rem; padding: 5px 2px; border-radius: 6px;
+  }
+  .shoplist li input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; flex-shrink: 0; }
+  .shoplist li.checked span { text-decoration: line-through; color: var(--text-muted); }
+  .shoplist .qty { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-muted); min-width: 3.2em; }
+
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(20,24,15,0.45); display: flex; align-items: flex-start;
+    justify-content: center; padding: 24px 16px; overflow-y: auto; z-index: 10;
+  }
+  .modal {
+    background: var(--surface); border-radius: 16px; padding: 22px; width: 100%; max-width: 560px;
+    display: flex; flex-direction: column; gap: 14px; box-shadow: var(--shadow); margin-block: auto;
+  }
+  .modal h2 { font-size: 1.3rem; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label { font-size: 0.78rem; font-weight: 600; color: var(--text-muted); }
+  .field input, .field textarea {
+    font: inherit; font-size: 0.92rem; padding: 9px 11px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text); width: 100%;
+  }
+  .field textarea { resize: vertical; min-height: 56px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  .ing-row {
+    display: grid; grid-template-columns: 1.6fr 0.7fr 0.8fr 1.1fr auto; gap: 6px; align-items: center;
+  }
+  .ing-row input, .ing-row select {
+    font: inherit; font-size: 0.85rem; padding: 7px 8px; border-radius: 7px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text); width: 100%;
+  }
+  .ing-row button { background: none; border: none; color: var(--danger); cursor: pointer; font-size: 1.1rem; padding: 2px 6px; }
+  .ing-head { display: grid; grid-template-columns: 1.6fr 0.7fr 0.8fr 1.1fr auto; gap: 6px; font-size: 0.72rem; color: var(--text-muted); font-weight: 600; }
+
+  .modal-actions { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; }
+  .modal-actions .right { display: flex; gap: 8px; }
+
+  .banner {
+    border-radius: 10px; padding: 10px 14px; font-size: 0.86rem; display: flex; justify-content: space-between; gap: 10px; align-items: center;
+  }
+  .banner.error { background: var(--danger-soft); color: var(--danger); }
+  .banner.info { background: var(--amber-soft); color: var(--amber); }
+  .banner button { background: none; border: none; color: inherit; font-weight: 700; cursor: pointer; }
+
+  .loading { color: var(--text-muted); font-size: 0.9rem; padding: 20px; text-align: center; }
+
+  @media (max-width: 480px) {
+    .row2 { grid-template-columns: 1fr; }
+    .ing-row { grid-template-columns: 1fr; }
+    .ing-head { display: none; }
+  }
+</style>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <h1>Middagsbanken</h1>
+    <p>Era recept, era veckor. Välj middagar för veckan så räknas inköpslistan ut åt er.</p>
+  </header>
+
+  <div id="banners"></div>
+
+  <nav class="tabs">
+    <button data-tab="recipes" class="active">Recept</button>
+    <button data-tab="week">Veckoplan</button>
+  </nav>
+
+  <section class="panel" id="panel-recipes">
+    <div class="toolbar">
+      <input class="search" id="recipeSearch" type="text" placeholder="Sök recept…">
+      <select class="sortsel" id="recipeSort">
+        <option value="name">Namn (A–Ö)</option>
+        <option value="stale">Inte lagad på länge</option>
+        <option value="new">Senast tillagda</option>
+      </select>
+      <button class="btn primary" id="newRecipeBtn">+ Nytt recept</button>
+    </div>
+    <div class="tagrow" id="tagFilterRow"></div>
+    <div id="recipeGrid" class="grid"></div>
+  </section>
+
+  <section class="panel" id="panel-week" hidden>
+    <div class="toolbar">
+      <input class="search" id="weekSearch" type="text" placeholder="Sök bland recepten…">
+      <span style="font-size:0.85rem;color:var(--text-muted);white-space:nowrap;" id="weekCount">0 valda</span>
+    </div>
+    <div id="weekList" class="grid" style="grid-template-columns: 1fr;"></div>
+
+    <div id="shopWrap" hidden>
+      <h2 style="font-size:1.2rem;margin-bottom:10px;">Inköpslista</h2>
+      <div id="shopList"></div>
+      <div class="toolbar" style="margin-top:12px;">
+        <button class="btn" id="copyListBtn">Kopiera lista</button>
+        <button class="btn primary" id="savePlanBtn">Spara veckoplan</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div id="modalRoot"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var SUPABASE_URL = "https://lmaqcrqkhtbnrfaifgxo.supabase.co";
+  var SUPABASE_KEY = "sb_publishable_4_9dxXTjEmE3oYTBdQxCfg_MVSl2KlG";
+  var API = SUPABASE_URL + "/rest/v1";
+  var HEADERS = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": "Bearer " + SUPABASE_KEY,
+    "Content-Type": "application/json"
+  };
+
+  var CATEGORIES = ["Frukt & grönt", "Kött & fisk", "Mejeri & ägg", "Bröd", "Skafferi", "Kryddor", "Fryst", "Övrigt"];
+
+  var state = {
+    recipes: [],
+    loading: true,
+    activeTab: "recipes",
+    recipeSearch: "",
+    recipeSort: "name",
+    weekSearch: "",
+    activeTagFilter: null,
+    selected: new Set(),
+    checkedShop: new Set(),
+    editing: null, // recipe object being edited, or {} for new
+    banner: null
+  };
+
+  function $(sel, root) { return (root || document).querySelector(sel); }
+  function el(tag, attrs, children) {
+    var e = document.createElement(tag);
+    for (var k in (attrs || {})) {
+      if (k === "class") e.className = attrs[k];
+      else if (k === "html") e.innerHTML = attrs[k];
+      else if (k.indexOf("on") === 0) e.addEventListener(k.slice(2), attrs[k]);
+      else e.setAttribute(k, attrs[k]);
+    }
+    (children || []).forEach(function (c) { if (c) e.appendChild(c); });
+    return e;
+  }
+  function text(t) { return document.createTextNode(t); }
+  function fmtDate(d) {
+    if (!d) return null;
+    var dt = new Date(d + "T00:00:00");
+    return dt.toLocaleDateString("sv-SE", { day: "numeric", month: "short", year: "numeric" });
+  }
+  function daysAgo(d) {
+    if (!d) return Infinity;
+    return (Date.now() - new Date(d + "T00:00:00").getTime()) / 86400000;
+  }
+  function esc(s) { return String(s == null ? "" : s); }
+
+  function showBanner(kind, msgText) {
+    state.banner = { kind: kind, text: msgText };
+    renderBanner();
+  }
+  function clearBanner() { state.banner = null; renderBanner(); }
+  function renderBanner() {
+    var host = $("#banners");
+    host.innerHTML = "";
+    if (!state.banner) return;
+    host.appendChild(el("div", { class: "banner " + state.banner.kind }, [
+      el("span", {}, [text(state.banner.text)]),
+      el("button", { onclick: clearBanner }, [text("✕")])
+    ]));
+  }
+
+  // ---------- data ----------
+
+  function apiFetch(path, opts) {
+    opts = opts || {};
+    var headers = Object.assign({}, HEADERS, opts.headers || {});
+    return fetch(API + path, {
+      method: opts.method || "GET",
+      headers: headers,
+      body: opts.body ? JSON.stringify(opts.body) : undefined
+    }).then(function (res) {
+      if (!res.ok) {
+        return res.text().then(function (t) {
+          throw new Error("Databasfel (" + res.status + "): " + t.slice(0, 200));
+        });
+      }
+      if (res.status === 204) return null;
+      return res.json();
+    });
+  }
+
+  function loadRecipes() {
+    state.loading = true;
+    render();
+    return apiFetch("/recipes?select=*,recipe_ingredients(*)&order=name.asc")
+      .then(function (data) {
+        state.recipes = data || [];
+        state.loading = false;
+        render();
+      })
+      .catch(function (err) {
+        state.loading = false;
+        showBanner("error", "Kunde inte hämta recept. " + err.message);
+        render();
+      });
+  }
+
+  // ---------- derived ----------
+
+  function allTags() {
+    var s = new Set();
+    state.recipes.forEach(function (r) { (r.tags || []).forEach(function (t) { s.add(t); }); });
+    return Array.from(s).sort();
+  }
+
+  function filteredRecipes(list, searchVal, tagFilter) {
+    var q = (searchVal || "").trim().toLowerCase();
+    return list.filter(function (r) {
+      if (tagFilter && (r.tags || []).indexOf(tagFilter) === -1) return false;
+      if (!q) return true;
+      if (r.name.toLowerCase().indexOf(q) !== -1) return true;
+      return (r.recipe_ingredients || []).some(function (i) { return i.name.toLowerCase().indexOf(q) !== -1; });
+    });
+  }
+
+  function sortedRecipes(list) {
+    var arr = list.slice();
+    if (state.recipeSort === "name") {
+      arr.sort(function (a, b) { return a.name.localeCompare(b.name, "sv"); });
+    } else if (state.recipeSort === "stale") {
+      arr.sort(function (a, b) { return daysAgo(b.last_cooked_at) - daysAgo(a.last_cooked_at); });
+    } else if (state.recipeSort === "new") {
+      arr.sort(function (a, b) { return new Date(b.created_at) - new Date(a.created_at); });
+    }
+    return arr;
+  }
+
+  // ---------- render: tabs ----------
+
+  function render() {
+    renderBanner();
+    renderTabs();
+    renderRecipesPanel();
+    renderWeekPanel();
+  }
+
+  function renderTabs() {
+    document.querySelectorAll("nav.tabs button").forEach(function (b) {
+      b.classList.toggle("active", b.getAttribute("data-tab") === state.activeTab);
+    });
+    $("#panel-recipes").hidden = state.activeTab !== "recipes";
+    $("#panel-week").hidden = state.activeTab !== "week";
+  }
+
+  // ---------- render: recipes tab ----------
+
+  function renderRecipesPanel() {
+    var grid = $("#recipeGrid");
+    grid.innerHTML = "";
+
+    var tagHost = $("#tagFilterRow");
+    tagHost.innerHTML = "";
+    var tags = allTags();
+    tags.forEach(function (t) {
+      var chip = el("button", {
+        class: "tagchip" + (state.activeTagFilter === t ? " on" : ""),
+        onclick: function () {
+          state.activeTagFilter = state.activeTagFilter === t ? null : t;
+          renderRecipesPanel();
+        }
+      }, [text(t)]);
+      tagHost.appendChild(chip);
+    });
+
+    if (state.loading) { grid.appendChild(el("div", { class: "loading" }, [text("Hämtar recept…")])); return; }
+
+    var list = sortedRecipes(filteredRecipes(state.recipes, state.recipeSearch, state.activeTagFilter));
+
+    if (!list.length) {
+      grid.appendChild(el("div", { class: "empty" }, [
+        text(state.recipes.length ? "Inga recept matchar sökningen." : "Inga recept ännu — lägg till det första med knappen ovan.")
+      ]));
+      return;
+    }
+
+    list.forEach(function (r) {
+      var ingCount = (r.recipe_ingredients || []).length;
+      var meta = el("div", { class: "meta" }, [
+        el("span", {}, [text(ingCount + " ingrediens" + (ingCount === 1 ? "" : "er"))]),
+        el("span", {}, [text(r.last_cooked_at ? "Senast lagad " + fmtDate(r.last_cooked_at) : "Inte lagad än")])
+      ]);
+      var tagsRow = el("div", { class: "tagrow" }, (r.tags || []).map(function (t) {
+        return el("span", { class: "tagchip static" }, [text(t)]);
+      }));
+      var card = el("div", { class: "card" }, [
+        el("h3", {}, [text(r.name)]),
+        meta,
+        tagsRow,
+        el("div", { class: "actions" }, [
+          el("button", { class: "btn small", onclick: function () { openEditModal(r); } }, [text("Redigera")]),
+          el("button", { class: "btn small danger", onclick: function () { deleteRecipe(r); } }, [text("Ta bort")])
+        ])
+      ]);
+      grid.appendChild(card);
+    });
+  }
+
+  // ---------- render: week tab ----------
+
+  function renderWeekPanel() {
+    var host = $("#weekList");
+    host.innerHTML = "";
+    if (state.loading) { host.appendChild(el("div", { class: "loading" }, [text("Hämtar recept…")])); return; }
+
+    var list = sortedRecipes(filteredRecipes(state.recipes, state.weekSearch, null));
+
+    if (!list.length) {
+      host.appendChild(el("div", { class: "empty" }, [text("Inga recept matchar sökningen.")]));
+    }
+
+    list.forEach(function (r) {
+      var on = state.selected.has(r.id);
+      var cb = el("input", { type: "checkbox" });
+      cb.checked = on;
+      cb.addEventListener("change", function () { toggleSelected(r.id); });
+      var card = el("div", { class: "weekcard" + (on ? " on" : ""), onclick: function (e) {
+        if (e.target.tagName === "INPUT") return;
+        toggleSelected(r.id);
+      } }, [
+        cb,
+        el("div", { class: "body" }, [
+          el("h3", {}, [text(r.name)]),
+          el("div", { class: "meta", style: "color:var(--text-muted);font-size:0.78rem;" }, [
+            text((r.recipe_ingredients || []).length + " ingredienser · " + (r.last_cooked_at ? "senast lagad " + fmtDate(r.last_cooked_at) : "inte lagad än"))
+          ])
+        ])
+      ]);
+      host.appendChild(card);
+    });
+
+    $("#weekCount").textContent = state.selected.size + (state.selected.size === 1 ? " vald" : " valda");
+    renderShoppingList();
+  }
+
+  function toggleSelected(id) {
+    if (state.selected.has(id)) state.selected.delete(id); else state.selected.add(id);
+    renderWeekPanel();
+  }
+
+  function buildShoppingList() {
+    var chosen = state.recipes.filter(function (r) { return state.selected.has(r.id); });
+    var map = {}; // key -> {name, unit, amount, hasAmount, count, category}
+    chosen.forEach(function (r) {
+      (r.recipe_ingredients || []).forEach(function (ing) {
+        var unit = (ing.unit || "").trim();
+        var key = ing.name.trim().toLowerCase() + "|" + unit.toLowerCase();
+        var amt = ing.amount === null || ing.amount === undefined || ing.amount === "" ? null : Number(ing.amount);
+        if (!map[key]) {
+          map[key] = { name: ing.name.trim(), unit: unit, amount: 0, hasAmount: false, count: 0, category: ing.category || "Övrigt" };
+        }
+        map[key].count += 1;
+        if (amt !== null && !isNaN(amt)) { map[key].amount += amt; map[key].hasAmount = true; }
+      });
+    });
+    var byCat = {};
+    Object.keys(map).forEach(function (k) {
+      var item = map[k];
+      var cat = CATEGORIES.indexOf(item.category) === -1 ? "Övrigt" : item.category;
+      if (!byCat[cat]) byCat[cat] = [];
+      byCat[cat].push(item);
+    });
+    Object.keys(byCat).forEach(function (cat) {
+      byCat[cat].sort(function (a, b) { return a.name.localeCompare(b.name, "sv"); });
+    });
+    return byCat;
+  }
+
+  function shopItemKey(item) { return item.name.toLowerCase() + "|" + item.unit.toLowerCase(); }
+
+  function renderShoppingList() {
+    var wrap = $("#shopWrap");
+    var host = $("#shopList");
+    host.innerHTML = "";
+    if (!state.selected.size) { wrap.hidden = true; return; }
+    wrap.hidden = false;
+
+    var byCat = buildShoppingList();
+    var cats = CATEGORIES.filter(function (c) { return byCat[c]; });
+
+    var container = el("div", { class: "shoplist" }, []);
+    cats.forEach(function (cat) {
+      container.appendChild(el("div", { class: "cathead" }, [text(cat)]));
+      var ul = el("ul", {}, []);
+      byCat[cat].forEach(function (item) {
+        var key = shopItemKey(item);
+        var checked = state.checkedShop.has(key);
+        var qtyLabel = item.hasAmount
+          ? (Math.round(item.amount * 100) / 100) + (item.unit ? " " + item.unit : " st")
+          : (item.count > 1 ? "×" + item.count : "");
+        var cb = el("input", { type: "checkbox" });
+        cb.checked = checked;
+        cb.addEventListener("change", function () {
+          if (checked) state.checkedShop.delete(key); else state.checkedShop.add(key);
+          renderShoppingList();
+        });
+        var li = el("li", { class: checked ? "checked" : "" }, [
+          cb,
+          el("span", { class: "qty" }, [text(qtyLabel)]),
+          el("span", {}, [text(item.name)])
+        ]);
+        ul.appendChild(li);
+      });
+      container.appendChild(ul);
+    });
+    host.appendChild(container);
+  }
+
+  function copyShoppingList() {
+    var byCat = buildShoppingList();
+    var cats = CATEGORIES.filter(function (c) { return byCat[c]; });
+    var lines = [];
+    cats.forEach(function (cat) {
+      lines.push(cat + ":");
+      byCat[cat].forEach(function (item) {
+        var qty = item.hasAmount ? (Math.round(item.amount * 100) / 100) + (item.unit ? " " + item.unit : " st") + " " : (item.count > 1 ? "×" + item.count + " " : "");
+        lines.push("- " + qty + item.name);
+      });
+      lines.push("");
+    });
+    var out = lines.join("\n").trim();
+    navigator.clipboard.writeText(out).then(function () {
+      showBanner("info", "Inköpslistan kopierad.");
+    }).catch(function () {
+      showBanner("error", "Kunde inte kopiera automatiskt — markera texten manuellt.");
+    });
+  }
+
+  function savePlan() {
+    if (!state.selected.size) return;
+    var ids = Array.from(state.selected);
+    var today = new Date().toISOString().slice(0, 10);
+    var weekLabel = "Vecka från " + new Date().toLocaleDateString("sv-SE");
+    apiFetch("/weekly_plans", { method: "POST", body: { week_label: weekLabel, recipe_ids: ids } })
+      .then(function () {
+        return apiFetch("/recipes?id=in.(" + ids.join(",") + ")", { method: "PATCH", body: { last_cooked_at: today } });
+      })
+      .then(function () {
+        state.recipes.forEach(function (r) { if (ids.indexOf(r.id) !== -1) r.last_cooked_at = today; });
+        showBanner("info", "Veckoplanen sparad. \"Senast lagad\" är uppdaterad.");
+        render();
+      })
+      .catch(function (err) {
+        showBanner("error", "Kunde inte spara veckoplanen. " + err.message);
+      });
+  }
+
+  function deleteRecipe(r) {
+    if (!window.confirm) {} // confirm() is inert in artifacts; use inline flow instead
+    var host = $("#modalRoot");
+    host.innerHTML = "";
+    host.appendChild(el("div", { class: "modal-backdrop", onclick: function (e) { if (e.target === host.firstChild) host.innerHTML = ""; } }, [
+      el("div", { class: "modal" }, [
+        el("h2", {}, [text("Ta bort " + r.name + "?")]),
+        el("p", { style: "color:var(--text-muted);font-size:0.9rem;" }, [text("Det går inte att ångra.")]),
+        el("div", { class: "modal-actions" }, [
+          el("button", { class: "btn", onclick: function () { host.innerHTML = ""; } }, [text("Avbryt")]),
+          el("button", {
+            class: "btn danger", onclick: function () {
+              apiFetch("/recipes?id=eq." + r.id, { method: "DELETE" })
+                .then(function () {
+                  state.recipes = state.recipes.filter(function (x) { return x.id !== r.id; });
+                  state.selected.delete(r.id);
+                  host.innerHTML = "";
+                  render();
+                })
+                .catch(function (err) { showBanner("error", "Kunde inte ta bort receptet. " + err.message); });
+            }
+          }, [text("Ta bort")])
+        ])
+      ])
+    ]));
+  }
+
+  // ---------- modal: add/edit recipe ----------
+
+  var formIngredients = [];
+  var formIdCounter = 0;
+
+  function openNewModal() {
+    formIngredients = [{ _id: formIdCounter++, name: "", amount: "", unit: "", category: "Övrigt" }];
+    renderModal(null);
+  }
+  function openEditModal(r) {
+    formIngredients = (r.recipe_ingredients || []).slice().sort(function (a, b) { return a.sort_order - b.sort_order; }).map(function (i) {
+      return { _id: formIdCounter++, name: i.name, amount: i.amount === null ? "" : i.amount, unit: i.unit || "", category: i.category || "Övrigt" };
+    });
+    if (!formIngredients.length) formIngredients = [{ _id: formIdCounter++, name: "", amount: "", unit: "", category: "Övrigt" }];
+    renderModal(r);
+  }
+
+  function renderModal(editingRecipe) {
+    var host = $("#modalRoot");
+    host.innerHTML = "";
+
+    var nameInput = el("input", { type: "text", value: editingRecipe ? editingRecipe.name : "", placeholder: "t.ex. Tacopanna" });
+    var tagsInput = el("input", { type: "text", value: editingRecipe ? (editingRecipe.tags || []).join(", ") : "", placeholder: "t.ex. vardag, snabb, barnvänlig" });
+    var notesInput = el("textarea", { placeholder: "Egna anteckningar, tillagning, tips…" });
+    notesInput.value = editingRecipe ? (editingRecipe.notes || "") : "";
+    var urlInput = el("input", { type: "text", value: editingRecipe ? (editingRecipe.source_url || "") : "", placeholder: "Länk till recept (valfritt)" });
+
+    var ingHost = el("div", { class: "field" }, []);
+    var ingHead = el("div", { class: "ing-head" }, [
+      el("span", {}, [text("Ingrediens")]),
+      el("span", {}, [text("Mängd")]),
+      el("span", {}, [text("Enhet")]),
+      el("span", {}, [text("Kategori")]),
+      el("span", {}, [])
+    ]);
+    var ingList = el("div", { style: "display:flex;flex-direction:column;gap:6px;" }, []);
+
+    function renderIngList() {
+      ingList.innerHTML = "";
+      formIngredients.forEach(function (ing) {
+        var nameF = el("input", { type: "text", placeholder: "namn", value: ing.name });
+        nameF.addEventListener("input", function () { ing.name = nameF.value; });
+        var amtF = el("input", { type: "text", placeholder: "1", value: ing.amount, inputmode: "decimal" });
+        amtF.addEventListener("input", function () { ing.amount = amtF.value; });
+        var unitF = el("input", { type: "text", placeholder: "dl/g/st", value: ing.unit });
+        unitF.addEventListener("input", function () { ing.unit = unitF.value; });
+        var catF = el("select", {}, CATEGORIES.map(function (c) {
+          var o = el("option", { value: c }, [text(c)]);
+          if (c === ing.category) o.setAttribute("selected", "selected");
+          return o;
+        }));
+        catF.addEventListener("change", function () { ing.category = catF.value; });
+        var rmBtn = el("button", { type: "button", title: "Ta bort rad", onclick: function () {
+          formIngredients = formIngredients.filter(function (x) { return x._id !== ing._id; });
+          renderIngList();
+        } }, [text("✕")]);
+        ingList.appendChild(el("div", { class: "ing-row" }, [nameF, amtF, unitF, catF, rmBtn]));
+      });
+    }
+    renderIngList();
+
+    var addIngBtn = el("button", { type: "button", class: "btn small", onclick: function () {
+      formIngredients.push({ _id: formIdCounter++, name: "", amount: "", unit: "", category: "Övrigt" });
+      renderIngList();
+    } }, [text("+ Lägg till ingrediens")]);
+
+    ingHost.appendChild(el("label", {}, [text("Ingredienser")]));
+    ingHost.appendChild(ingHead);
+    ingHost.appendChild(ingList);
+    ingHost.appendChild(addIngBtn);
+
+    var saveBtn = el("button", { class: "btn primary", onclick: function () { submitRecipe(editingRecipe, nameInput, tagsInput, notesInput, urlInput); } }, [text(editingRecipe ? "Spara ändringar" : "Spara recept")]);
+    var cancelBtn = el("button", { class: "btn", onclick: function () { host.innerHTML = ""; } }, [text("Avbryt")]);
+
+    var modal = el("div", { class: "modal" }, [
+      el("h2", {}, [text(editingRecipe ? "Redigera recept" : "Nytt recept")]),
+      el("div", { class: "field" }, [el("label", {}, [text("Namn")]), nameInput]),
+      el("div", { class: "field" }, [el("label", {}, [text("Taggar (kommaseparerade)")]), tagsInput]),
+      ingHost,
+      el("div", { class: "field" }, [el("label", {}, [text("Anteckningar")]), notesInput]),
+      el("div", { class: "field" }, [el("label", {}, [text("Receptlänk")]), urlInput]),
+      el("div", { class: "modal-actions" }, [
+        el("span"),
+        el("div", { class: "right" }, [cancelBtn, saveBtn])
+      ])
+    ]);
+
+    host.appendChild(el("div", { class: "modal-backdrop", onclick: function (e) { if (e.target.classList.contains("modal-backdrop")) host.innerHTML = ""; } }, [modal]));
+  }
+
+  function submitRecipe(editingRecipe, nameInput, tagsInput, notesInput, urlInput) {
+    var name = nameInput.value.trim();
+    if (!name) { showBanner("error", "Receptet behöver ett namn."); return; }
+    var tags = tagsInput.value.split(",").map(function (t) { return t.trim(); }).filter(Boolean);
+    var cleanedIngredients = formIngredients
+      .filter(function (i) { return i.name.trim(); })
+      .map(function (i, idx) {
+        var amt = i.amount === "" || i.amount === null || i.amount === undefined ? null : Number(String(i.amount).replace(",", "."));
+        return { name: i.name.trim(), amount: isNaN(amt) ? null : amt, unit: i.unit.trim() || null, category: i.category || "Övrigt", sort_order: idx };
+      });
+
+    var payload = { name: name, tags: tags, notes: notesInput.value.trim() || null, source_url: urlInput.value.trim() || null };
+
+    var chain;
+    if (editingRecipe) {
+      chain = apiFetch("/recipes?id=eq." + editingRecipe.id, { method: "PATCH", headers: { Prefer: "return=representation" }, body: payload })
+        .then(function () { return apiFetch("/recipe_ingredients?recipe_id=eq." + editingRecipe.id, { method: "DELETE" }); })
+        .then(function () {
+          if (!cleanedIngredients.length) return null;
+          var withRecipe = cleanedIngredients.map(function (i) { return Object.assign({ recipe_id: editingRecipe.id }, i); });
+          return apiFetch("/recipe_ingredients", { method: "POST", body: withRecipe });
+        })
+        .then(function () { return loadRecipes(); });
+    } else {
+      chain = apiFetch("/recipes", { method: "POST", headers: { Prefer: "return=representation" }, body: payload })
+        .then(function (created) {
+          var recipe = created[0];
+          if (!cleanedIngredients.length) return null;
+          var withRecipe = cleanedIngredients.map(function (i) { return Object.assign({ recipe_id: recipe.id }, i); });
+          return apiFetch("/recipe_ingredients", { method: "POST", body: withRecipe });
+        })
+        .then(function () { return loadRecipes(); });
+    }
+
+    chain
+      .then(function () { $("#modalRoot").innerHTML = ""; })
+      .catch(function (err) { showBanner("error", "Kunde inte spara receptet. " + err.message); });
+  }
+
+  // ---------- wire up ----------
+
+  document.querySelectorAll("nav.tabs button").forEach(function (b) {
+    b.addEventListener("click", function () { state.activeTab = b.getAttribute("data-tab"); render(); });
+  });
+  $("#recipeSearch").addEventListener("input", function (e) { state.recipeSearch = e.target.value; renderRecipesPanel(); });
+  $("#recipeSort").addEventListener("change", function (e) { state.recipeSort = e.target.value; renderRecipesPanel(); });
+  $("#weekSearch").addEventListener("input", function (e) { state.weekSearch = e.target.value; renderWeekPanel(); });
+  $("#newRecipeBtn").addEventListener("click", openNewModal);
+  $("#copyListBtn").addEventListener("click", copyShoppingList);
+  $("#savePlanBtn").addEventListener("click", savePlan);
+
+  loadRecipes();
+})();
+</script>
+</body>
+</html>

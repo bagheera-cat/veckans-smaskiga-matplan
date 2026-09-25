@@ -342,8 +342,14 @@
           throw new Error("Databasfel (" + res.status + "): " + t.slice(0, 200));
         });
       }
-      if (res.status === 204) return null;
-      return res.json();
+      // PostgREST returns an empty body (with status 200/201/204 depending on
+      // the request) unless "Prefer: return=representation" was sent, so we
+      // can't key off status code alone — read as text and parse only if
+      // there's actually something there.
+      return res.text().then(function (t) {
+        if (!t) return null;
+        try { return JSON.parse(t); } catch (e) { return null; }
+      });
     });
   }
 

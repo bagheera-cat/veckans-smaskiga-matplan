@@ -223,6 +223,7 @@
   <nav class="tabs">
     <button data-tab="recipes" class="active">Recept</button>
     <button data-tab="week">Veckoplan</button>
+    <button data-tab="history">Historik</button>
   </nav>
 
   <section class="panel" id="panel-recipes">
@@ -242,6 +243,10 @@
   <section class="panel" id="panel-week" hidden>
     <div class="toolbar">
       <input class="search" id="weekSearch" type="text" placeholder="Sök bland recepten…">
+      <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:var(--text-muted);white-space:nowrap;">
+        Veckostart
+        <input type="date" id="weekStartInput" class="sortsel">
+      </label>
       <span style="font-size:0.85rem;color:var(--text-muted);white-space:nowrap;" id="weekCount">0 valda</span>
     </div>
     <div id="weekList" class="grid" style="grid-template-columns: 1fr;"></div>
@@ -254,6 +259,10 @@
         <button class="btn primary" id="savePlanBtn">Spara veckoplan</button>
       </div>
     </div>
+  </section>
+
+  <section class="panel" id="panel-history" hidden>
+    <div id="historyList" style="display:flex;flex-direction:column;gap:12px;"></div>
   </section>
 </div>
 
@@ -285,7 +294,10 @@
     selected: new Set(),
     checkedShop: new Set(),
     editing: null, // recipe object being edited, or {} for new
-    banner: null
+    banner: null,
+    plans: [],
+    plansLoading: true,
+    weekStart: toISODate(mondayOf(new Date()))
   };
 
   function $(sel, root) { return (root || document).querySelector(sel); }
@@ -311,6 +323,34 @@
     return (Date.now() - new Date(d + "T00:00:00").getTime()) / 86400000;
   }
   function esc(s) { return String(s == null ? "" : s); }
+
+  function mondayOf(dateObj) {
+    var d = new Date(dateObj);
+    var day = d.getDay(); // 0 = söndag .. 6 = lördag
+    var diff = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + diff);
+    return d;
+  }
+  function toISODate(d) {
+    var y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, "0"), day = String(d.getDate()).padStart(2, "0");
+    return y + "-" + m + "-" + day;
+  }
+  function isoWeekNumber(dateObj) {
+    var d = new Date(Date.UTC(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()));
+    var dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    var yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  }
+  function weekRangeLabel(weekStartStr) {
+    if (!weekStartStr) return null;
+    var start = new Date(weekStartStr + "T00:00:00");
+    var end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    var wk = isoWeekNumber(start);
+    var fmt = function (d) { return d.toLocaleDateString("sv-SE", { day: "numeric", month: "short" }); };
+    return "Vecka " + wk + " · " + fmt(start) + "–" + fmt(end);
+  }
 
   function showBanner(kind, msgText) {
     state.banner = { kind: kind, text: msgText };
@@ -369,6 +409,21 @@
       });
   }
 
+  function loadPlans() {
+    state.plansLoading = true;
+    return apiFetch("/weekly_plans?select=*&order=week_start.desc.nullslast,created_at.desc")
+      .then(function (data) {
+        state.plans = data || [];
+        state.plansLoading = false;
+        render();
+      })
+      .catch(function (err) {
+        state.plansLoading = false;
+        showBanner("error", "Kunde inte hämta veckohistorik. " + err.message);
+        render();
+      });
+  }
+
   // ---------- derived ----------
 
   function allTags() {
@@ -406,6 +461,7 @@
     renderTabs();
     renderRecipesPanel();
     renderWeekPanel();
+    renderHistoryPanel();
   }
 
   function renderTabs() {
@@ -414,6 +470,7 @@
     });
     $("#panel-recipes").hidden = state.activeTab !== "recipes";
     $("#panel-week").hidden = state.activeTab !== "week";
+    $("#panel-history").hidden = state.activeTab !== "history";
   }
 
   // ---------- render: recipes tab ----------
@@ -603,19 +660,104 @@
     if (!state.selected.size) return;
     var ids = Array.from(state.selected);
     var today = new Date().toISOString().slice(0, 10);
-    var weekLabel = "Vecka från " + new Date().toLocaleDateString("sv-SE");
-    apiFetch("/weekly_plans", { method: "POST", body: { week_label: weekLabel, recipe_ids: ids } })
+    var weekStartField = $("#weekStartInput");
+    var weekStart = (weekStartField && weekStartField.value) || state.weekStart;
+    var label = weekRangeLabel(weekStart) || ("Vecka från " + fmtDate(weekStart));
+
+    apiFetch("/weekly_plans", { method: "POST", body: { week_start: weekStart, week_label: label, recipe_ids: ids } })
       .then(function () {
         return apiFetch("/recipes?id=in.(" + ids.join(",") + ")", { method: "PATCH", body: { last_cooked_at: today } });
       })
       .then(function () {
         state.recipes.forEach(function (r) { if (ids.indexOf(r.id) !== -1) r.last_cooked_at = today; });
-        showBanner("info", "Veckoplanen sparad. \"Senast lagad\" är uppdaterad.");
+        return loadPlans();
+      })
+      .then(function () {
+        showBanner("info", "Veckoplanen sparad i historiken. \"Senast lagad\" är uppdaterad.");
         render();
       })
       .catch(function (err) {
         showBanner("error", "Kunde inte spara veckoplanen. " + err.message);
       });
+  }
+
+  // ---------- render: history tab ----------
+
+  function renderHistoryPanel() {
+    var host = $("#historyList");
+    if (!host) return;
+    host.innerHTML = "";
+
+    if (state.plansLoading) { host.appendChild(el("div", { class: "loading" }, [text("Hämtar historik…")])); return; }
+
+    if (!state.plans.length) {
+      host.appendChild(el("div", { class: "empty" }, [text("Inga sparade veckoplaner än. Spara en veckoplan under \"Veckoplan\" så dyker den upp här.")]));
+      return;
+    }
+
+    state.plans.forEach(function (plan) {
+      var label = weekRangeLabel(plan.week_start) || plan.week_label || (plan.created_at ? "Sparad " + fmtDate(plan.created_at.slice(0, 10)) : "Veckoplan");
+      var names = (plan.recipe_ids || []).map(function (id) {
+        var r = state.recipes.find(function (x) { return x.id === id; });
+        return r ? r.name : null;
+      }).filter(Boolean);
+      var missing = (plan.recipe_ids || []).length - names.length;
+
+      var card = el("div", { class: "card" }, [
+        el("h3", {}, [text(label)]),
+        el("div", { class: "meta" }, [
+          text(names.length + " rätt" + (names.length === 1 ? "" : "er") + (missing ? " · " + missing + " borttaget recept" + (missing === 1 ? "" : "en") : ""))
+        ]),
+        el("div", { class: "tagrow" }, names.map(function (n) { return el("span", { class: "tagchip static" }, [text(n)]); })),
+        el("div", { class: "actions" }, [
+          names.length
+            ? el("button", { class: "btn small primary", onclick: function () { reusePlan(plan); } }, [text("Återanvänd den här veckan")])
+            : el("button", { class: "btn small primary", disabled: "disabled" }, [text("Inga recept kvar")]),
+          el("button", { class: "btn small danger", onclick: function () { deletePlan(plan); } }, [text("Ta bort")])
+        ])
+      ]);
+      host.appendChild(card);
+    });
+  }
+
+  function reusePlan(plan) {
+    var validIds = (plan.recipe_ids || []).filter(function (id) {
+      return state.recipes.some(function (r) { return r.id === id; });
+    });
+    if (!validIds.length) return;
+    state.selected = new Set(validIds);
+    state.activeTab = "week";
+    render();
+    var input = $("#weekStartInput");
+    if (input) input.value = toISODate(mondayOf(new Date()));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    showBanner("info", "Recepten är valda igen. Sätt veckostart och spara för att lägga till en ny post i historiken.");
+  }
+
+  function deletePlan(plan) {
+    var host = $("#modalRoot");
+    host.innerHTML = "";
+    var label = weekRangeLabel(plan.week_start) || plan.week_label || "veckoplanen";
+    host.appendChild(el("div", { class: "modal-backdrop", onclick: function (e) { if (e.target === host.firstChild) host.innerHTML = ""; } }, [
+      el("div", { class: "modal" }, [
+        el("h2", {}, [text("Ta bort " + label + "?")]),
+        el("p", { style: "color:var(--text-muted);font-size:0.9rem;" }, [text("Det går inte att ångra. Själva recepten påverkas inte.")]),
+        el("div", { class: "modal-actions" }, [
+          el("button", { class: "btn", onclick: function () { host.innerHTML = ""; } }, [text("Avbryt")]),
+          el("button", {
+            class: "btn danger", onclick: function () {
+              apiFetch("/weekly_plans?id=eq." + plan.id, { method: "DELETE" })
+                .then(function () {
+                  state.plans = state.plans.filter(function (p) { return p.id !== plan.id; });
+                  host.innerHTML = "";
+                  render();
+                })
+                .catch(function (err) { showBanner("error", "Kunde inte ta bort veckoplanen. " + err.message); });
+            }
+          }, [text("Ta bort")])
+        ])
+      ])
+    ]));
   }
 
   function deleteRecipe(r) {
@@ -785,8 +927,10 @@
   $("#newRecipeBtn").addEventListener("click", openNewModal);
   $("#copyListBtn").addEventListener("click", copyShoppingList);
   $("#savePlanBtn").addEventListener("click", savePlan);
+  $("#weekStartInput").value = state.weekStart;
 
   loadRecipes();
+  loadPlans();
 })();
 </script>
 </body>

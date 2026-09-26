@@ -393,6 +393,56 @@
     });
   }
 
+  // Calls the Supabase Edge Function that does the actual recipe parsing
+  // (server-side fetch of the url, or the AI vision call for a screenshot —
+  // both need the Anthropic API key, which stays server-side as a secret).
+  function callImportFunction(payload) {
+    return fetch(SUPABASE_URL + "/functions/v1/import-recipe", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + SUPABASE_KEY,
+        "apikey": SUPABASE_KEY
+      },
+      body: JSON.stringify(payload)
+    }).then(function (res) {
+      return res.text().then(function (t) {
+        var data = null;
+        try { data = JSON.parse(t); } catch (e) {}
+        if (!res.ok || !data || data.error) {
+          throw new Error((data && data.error) || ("Serverfel (" + res.status + ")"));
+        }
+        return data;
+      });
+    });
+  }
+
+  // Downscales an uploaded screenshot before sending it, to keep the AI call
+  // fast and cheap — a full-resolution phone photo is overkill for reading
+  // ingredient text.
+  function resizeImageToBase64(file, maxDim) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        var img = new Image();
+        img.onload = function () {
+          var scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+          var w = Math.max(1, Math.round(img.width * scale));
+          var h = Math.max(1, Math.round(img.height * scale));
+          var canvas = document.createElement("canvas");
+          canvas.width = w; canvas.height = h;
+          canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+          var dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+          resolve({ base64: dataUrl.split(",")[1], mediaType: "image/jpeg" });
+        };
+        img.onerror = function () { reject(new Error("Kunde inte läsa bilden.")); };
+        img.src = reader.result;
+      };
+      reader.onerror = function () { reject(new Error("Kunde inte läsa filen.")); };
+      reader.readAsDataURL(file);
+    });
+  }
+
   function loadRecipes() {
     state.loading = true;
     render();
@@ -861,8 +911,65 @@
     var saveBtn = el("button", { class: "btn primary", onclick: function () { submitRecipe(editingRecipe, nameInput, tagsInput, notesInput, urlInput); } }, [text(editingRecipe ? "Spara ändringar" : "Spara recept")]);
     var cancelBtn = el("button", { class: "btn", onclick: function () { host.innerHTML = ""; } }, [text("Avbryt")]);
 
+    // ---- AI-import: fyller i formuläret ovan, sparar inget själv ----
+    var importUrlInput = el("input", { type: "text", placeholder: "Klistra in en receptlänk…" });
+    var importUrlBtn = el("button", { type: "button", class: "btn small" }, [text("Hämta från länk")]);
+    var importFileInput = el("input", { type: "file", accept: "image/*" });
+    var importStatus = el("span", { style: "font-size:0.78rem;color:var(--text-muted);" }, []);
+
+    function setImportBusy(busy, msg) {
+      importUrlBtn.disabled = busy;
+      importFileInput.disabled = busy;
+      importStatus.textContent = busy ? (msg || "Tolkar recept…") : "";
+    }
+
+    function applyImportedRecipe(data) {
+      if (data.name) nameInput.value = data.name;
+      if (Array.isArray(data.tags) && data.tags.length) tagsInput.value = data.tags.join(", ");
+      if (Array.isArray(data.ingredients) && data.ingredients.length) {
+        formIngredients = data.ingredients.map(function (i) {
+          return {
+            _id: formIdCounter++,
+            name: i.name || "",
+            amount: (i.amount === null || i.amount === undefined || i.amount === "") ? "" : i.amount,
+            unit: i.unit || "",
+            category: CATEGORIES.indexOf(i.category) !== -1 ? i.category : "Övrigt"
+          };
+        });
+        renderIngList();
+      }
+      showBanner("info", "Receptet är tolkat — kontrollera att allt stämmer innan du sparar.");
+    }
+
+    importUrlBtn.addEventListener("click", function () {
+      var url = importUrlInput.value.trim();
+      if (!url) { showBanner("error", "Klistra in en länk först."); return; }
+      urlInput.value = url;
+      setImportBusy(true, "Hämtar och tolkar sidan…");
+      callImportFunction({ url: url })
+        .then(function (data) { setImportBusy(false); applyImportedRecipe(data); })
+        .catch(function (err) { setImportBusy(false); showBanner("error", "Kunde inte tolka länken. " + err.message); });
+    });
+
+    importFileInput.addEventListener("change", function () {
+      var file = importFileInput.files && importFileInput.files[0];
+      if (!file) return;
+      setImportBusy(true, "Läser skärmdumpen…");
+      resizeImageToBase64(file, 1400)
+        .then(function (img) { return callImportFunction({ image: img.base64, mediaType: img.mediaType }); })
+        .then(function (data) { setImportBusy(false); applyImportedRecipe(data); importFileInput.value = ""; })
+        .catch(function (err) { setImportBusy(false); showBanner("error", "Kunde inte tolka bilden. " + err.message); importFileInput.value = ""; });
+    });
+
+    var importSection = el("div", { class: "field", style: "background:var(--surface-2);border-radius:10px;padding:12px;gap:10px;" }, [
+      el("label", {}, [text("Importera automatiskt med AI")]),
+      el("div", { style: "display:flex;gap:6px;flex-wrap:wrap;" }, [importUrlInput, importUrlBtn]),
+      el("div", { style: "display:flex;gap:8px;align-items:center;flex-wrap:wrap;" }, [importFileInput, importStatus])
+    ]);
+
     var modal = el("div", { class: "modal" }, [
       el("h2", {}, [text(editingRecipe ? "Redigera recept" : "Nytt recept")]),
+      importSection,
       el("div", { class: "field" }, [el("label", {}, [text("Namn")]), nameInput]),
       el("div", { class: "field" }, [el("label", {}, [text("Taggar (kommaseparerade)")]), tagsInput]),
       ingHost,

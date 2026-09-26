@@ -623,9 +623,13 @@
     var map = {}; // key -> {name, unit, amount, hasAmount, count, category}
     chosen.forEach(function (r) {
       (r.recipe_ingredients || []).forEach(function (ing) {
-        var unit = (ing.unit || "").trim();
-        var key = ing.name.trim().toLowerCase() + "|" + unit.toLowerCase();
         var amt = ing.amount === null || ing.amount === undefined || ing.amount === "" ? null : Number(ing.amount);
+        // Normalisera enhet: om en mängd finns men ingen enhet är angiven (äldre
+        // recept, eller AI-tolkning som missat), räkna den som "st" så att t.ex.
+        // "1 gul lök" i två olika recept slås ihop till en rad i stället för två.
+        var unit = (ing.unit || "").trim();
+        if (!unit && amt !== null && !isNaN(amt)) unit = "st";
+        var key = ing.name.trim().toLowerCase() + "|" + unit.toLowerCase();
         if (!map[key]) {
           map[key] = { name: ing.name.trim(), unit: unit, amount: 0, hasAmount: false, count: 0, category: ing.category || "Övrigt" };
         }
@@ -860,8 +864,10 @@
 
     var nameInput = el("input", { type: "text", value: editingRecipe ? editingRecipe.name : "", placeholder: "t.ex. Tacopanna" });
     var tagsInput = el("input", { type: "text", value: editingRecipe ? (editingRecipe.tags || []).join(", ") : "", placeholder: "t.ex. vardag, snabb, barnvänlig" });
-    var notesInput = el("textarea", { placeholder: "Egna anteckningar, tillagning, tips…" });
+    var notesInput = el("textarea", { placeholder: "Egna anteckningar, tips…" });
     notesInput.value = editingRecipe ? (editingRecipe.notes || "") : "";
+    var instructionsInput = el("textarea", { placeholder: "Steg för steg, t.ex.\n1. Hacka löken…\n2. Fräs i olja…", rows: 6 });
+    instructionsInput.value = editingRecipe ? (editingRecipe.instructions || "") : "";
     var urlInput = el("input", { type: "text", value: editingRecipe ? (editingRecipe.source_url || "") : "", placeholder: "Länk till recept (valfritt)" });
 
     var ingHost = el("div", { class: "field" }, []);
@@ -908,7 +914,7 @@
     ingHost.appendChild(ingList);
     ingHost.appendChild(addIngBtn);
 
-    var saveBtn = el("button", { class: "btn primary", onclick: function () { submitRecipe(editingRecipe, nameInput, tagsInput, notesInput, urlInput); } }, [text(editingRecipe ? "Spara ändringar" : "Spara recept")]);
+    var saveBtn = el("button", { class: "btn primary", onclick: function () { submitRecipe(editingRecipe, nameInput, tagsInput, notesInput, urlInput, instructionsInput); } }, [text(editingRecipe ? "Spara ändringar" : "Spara recept")]);
     var cancelBtn = el("button", { class: "btn", onclick: function () { host.innerHTML = ""; } }, [text("Avbryt")]);
 
     // ---- AI-import: fyller i formuläret ovan, sparar inget själv ----
@@ -937,6 +943,9 @@
           };
         });
         renderIngList();
+      }
+      if (typeof data.instructions === "string" && data.instructions.trim()) {
+        instructionsInput.value = data.instructions.trim();
       }
       showBanner("info", "Receptet är tolkat — kontrollera att allt stämmer innan du sparar.");
     }
@@ -973,6 +982,7 @@
       el("div", { class: "field" }, [el("label", {}, [text("Namn")]), nameInput]),
       el("div", { class: "field" }, [el("label", {}, [text("Taggar (kommaseparerade)")]), tagsInput]),
       ingHost,
+      el("div", { class: "field" }, [el("label", {}, [text("Tillagning")]), instructionsInput]),
       el("div", { class: "field" }, [el("label", {}, [text("Anteckningar")]), notesInput]),
       el("div", { class: "field" }, [el("label", {}, [text("Receptlänk")]), urlInput]),
       el("div", { class: "modal-actions" }, [
@@ -984,7 +994,7 @@
     host.appendChild(el("div", { class: "modal-backdrop", onclick: function (e) { if (e.target.classList.contains("modal-backdrop")) host.innerHTML = ""; } }, [modal]));
   }
 
-  function submitRecipe(editingRecipe, nameInput, tagsInput, notesInput, urlInput) {
+  function submitRecipe(editingRecipe, nameInput, tagsInput, notesInput, urlInput, instructionsInput) {
     var name = nameInput.value.trim();
     if (!name) { showBanner("error", "Receptet behöver ett namn."); return; }
     var tags = tagsInput.value.split(",").map(function (t) { return t.trim(); }).filter(Boolean);
@@ -992,10 +1002,20 @@
       .filter(function (i) { return i.name.trim(); })
       .map(function (i, idx) {
         var amt = i.amount === "" || i.amount === null || i.amount === undefined ? null : Number(String(i.amount).replace(",", "."));
-        return { name: i.name.trim(), amount: isNaN(amt) ? null : amt, unit: i.unit.trim() || null, category: i.category || "Övrigt", sort_order: idx };
+        var unit = i.unit.trim();
+        // Om en mängd är satt men ingen enhet, räkna som "st" (se buildShoppingList)
+        // så att samma ingrediens från olika recept slås ihop i inköpslistan.
+        if (!unit && !isNaN(amt) && amt !== null) unit = "st";
+        return { name: i.name.trim(), amount: isNaN(amt) ? null : amt, unit: unit || null, category: i.category || "Övrigt", sort_order: idx };
       });
 
-    var payload = { name: name, tags: tags, notes: notesInput.value.trim() || null, source_url: urlInput.value.trim() || null };
+    var payload = {
+      name: name,
+      tags: tags,
+      notes: notesInput.value.trim() || null,
+      source_url: urlInput.value.trim() || null,
+      instructions: instructionsInput.value.trim() || null
+    };
 
     var chain;
     if (editingRecipe) {

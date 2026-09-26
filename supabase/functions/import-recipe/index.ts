@@ -1,7 +1,7 @@
 // Supabase Edge Function: import-recipe
 //
 // Tar emot antingen { url } eller { image, mediaType } och returnerar
-// strukturerad receptdata: { name, tags, ingredients: [...] }.
+// strukturerad receptdata: { name, tags, ingredients: [...], instructions }.
 //
 // Nyckeln till Anthropic-API:et läses från en secret (ANTHROPIC_API_KEY),
 // aldrig från klienten — det är hela poängen med att detta ligger i en
@@ -22,15 +22,17 @@ const PROMPT = `Du läser ett recept (antingen från text som klippts ur en webb
   "tags": ["kort", "svenska", "taggar", "t.ex. vardag/snabb/vegetariskt, max 4 st"],
   "ingredients": [
     { "name": "ingrediensnamn i grundform, t.ex. 'gul lök' inte 'gula lökar'", "amount": 2, "unit": "dl", "category": "en av kategorierna nedan" }
-  ]
+  ],
+  "instructions": "Tillagningsinstruktionerna som brödtext, ett steg per rad (använd \\n mellan stegen)."
 }
 
 Regler:
 - "amount" ska vara ett tal (använd decimalpunkt, t.ex. 0.5) eller null om ingen mängd anges (t.ex. "salt efter smak"). Om receptet anger ett intervall (t.ex. "4-5 morötter"), välj det högre talet.
-- "unit" ska vara en kort enhet (g, kg, ml, l, dl, msk, tsk, st, förpackning, klyfta, näve) eller null om ingredienser räknas i hela stycken utan enhet framför namnet (t.ex. "2 ägg" -> amount 2, unit null, name "ägg").
+- "unit" ska ALLTID sättas till en kort enhet, aldrig null, så länge en mängd anges: g, kg, ml, l, dl, msk, tsk, st, förpackning, klyfta, näve. Om ingrediensen bara räknas i hela stycken utan någon annan enhet framför namnet (t.ex. "2 ägg" eller "1 gul lök"), använd "st" som unit (amount 2, unit "st", name "ägg"). Använd bara unit null när amount också är null (ingen mängd alls anges, t.ex. "salt efter smak").
+- Skriv alltid ingrediensnamnet i obestämd singular grundform (t.ex. "gul lök", "vitlöksklyfta", "tomat") så att samma ingrediens från olika recept får exakt samma namn och kan slås ihop i inköpslistan.
 - "category" MÅSTE vara exakt en av: ${CATEGORIES.join(", ")}. Välj den som passar bäst.
-- Ta bara med ingredienser, inte tillagningsinstruktioner.
-- Om du inte kan hitta ett recept alls, returnera { "name": null, "tags": [], "ingredients": [] }.
+- "instructions" ska innehålla tillagningsstegen i ordning, som vanlig text (inte en JSON-lista). Om receptet inte har några instruktioner, använd null.
+- Om du inte kan hitta ett recept alls, returnera { "name": null, "tags": [], "ingredients": [], "instructions": null }.
 - Svara ENDAST med JSON-objektet, ingenting annat.`;
 
 function stripHtml(html) {
@@ -92,7 +94,7 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
-        max_tokens: 1500,
+        max_tokens: 2000,
         messages: [{ role: "user", content: content }]
       })
     });

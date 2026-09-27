@@ -3,8 +3,8 @@
 // Tar emot antingen { url } eller { image, mediaType } och returnerar
 // strukturerad receptdata: { name, tags, ingredients: [...], instructions }.
 // Vid { url } tillkommer även "image_url" (sidans og:image), om en sådan
-// hittas — aldrig vid { image }, en uppladdad egen bild blir inte automatiskt
-// receptbilden.
+// hittas och inte verkar orimligt stor (se isReasonableImageSize) — aldrig
+// vid { image }, en uppladdad egen bild blir inte automatiskt receptbilden.
 //
 // Nyckeln till Anthropic-API:et läses från en secret (ANTHROPIC_API_KEY),
 // aldrig från klienten — det är hela poängen med att detta ligger i en
@@ -77,6 +77,26 @@ function extractImageUrl(html, baseUrl) {
   return null;
 }
 
+// Vissa sidor (särskilt WordPress-bloggar) lägger en oskalad originalbild
+// rakt av som og:image — kan vara tiotals MB. Att sätta en sådan bild
+// direkt som receptbild får mobila webbläsare att krascha när den ska
+// avkodas för miniatyrer/förhandsvisning. Kolla filstorleken med HEAD
+// innan bilden accepteras automatiskt; är den okänd (servern svarar inte
+// med content-length) släpps den ändå igenom, eftersom de allra flesta
+// sidor redan serverar en rimligt skalad bild här.
+var MAX_AUTO_IMAGE_BYTES = 4 * 1024 * 1024;
+async function isReasonableImageSize(url) {
+  try {
+    var res = await fetch(url, { method: "HEAD", headers: { "User-Agent": "Mozilla/5.0 (compatible; MiddagsbankenBot/1.0)" } });
+    if (!res.ok) return true;
+    var len = res.headers.get("content-length");
+    if (!len) return true;
+    return Number(len) <= MAX_AUTO_IMAGE_BYTES;
+  } catch (e) {
+    return true;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS_HEADERS });
@@ -103,6 +123,9 @@ Deno.serve(async (req) => {
       if (!pageRes.ok) throw new Error("Kunde inte hämta sidan (status " + pageRes.status + ").");
       var html = await pageRes.text();
       var imageUrl = extractImageUrl(html, body.url);
+      // Görs i bakgrunden medan sidtexten skickas till AI:n, så vi inte
+      // lägger till extra väntetid för det vanliga fallet.
+      var imageOkPromise = imageUrl ? isReasonableImageSize(imageUrl) : Promise.resolve(false);
       var pageText = stripHtml(html).slice(0, 18000);
       if (!pageText) throw new Error("Sidan verkar sakna textinnehåll.");
       content = [{ type: "text", text: PROMPT + "\n\nHär är sidans textinnehåll:\n\n" + pageText }];
@@ -133,8 +156,9 @@ Deno.serve(async (req) => {
     var rawText = (aiData.content && aiData.content[0] && aiData.content[0].text) || "";
     var parsed = extractJson(rawText);
     // Bara satt för länk-importen (se ovan) — en uppladdad egen bild av
-    // receptet ska aldrig automatiskt bli receptets bild.
-    if (typeof imageUrl !== "undefined") parsed.image_url = imageUrl;
+    // receptet ska aldrig automatiskt bli receptets bild. Sätts inte heller
+    // om bilden verkar orimligt stor (se isReasonableImageSize ovan).
+    if (typeof imageUrl !== "undefined" && imageUrl && (await imageOkPromise)) parsed.image_url = imageUrl;
 
     return new Response(JSON.stringify(parsed), {
       headers: Object.assign({ "content-type": "application/json" }, CORS_HEADERS)

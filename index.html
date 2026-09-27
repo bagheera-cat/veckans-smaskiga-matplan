@@ -219,7 +219,10 @@
     font: inherit; font-size: 0.85rem; padding: 7px 8px; border-radius: 7px;
     border: 1px solid var(--border); background: var(--surface); color: var(--text); width: 100%;
   }
-  .ing-row button { background: none; border: none; color: var(--danger); cursor: pointer; font-size: 1.1rem; padding: 2px 6px; }
+  .ing-row button {
+    background: none; border: 1px solid var(--border); border-radius: 7px; color: var(--danger);
+    cursor: pointer; font-size: 0.78rem; padding: 7px 8px; white-space: nowrap;
+  }
   .ing-head { display: grid; grid-template-columns: 1.6fr 0.7fr 0.8fr 1.1fr auto; gap: 6px; font-size: 0.72rem; color: var(--text-muted); font-weight: 600; }
 
   .modal-actions { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; }
@@ -236,7 +239,15 @@
 
   @media (max-width: 480px) {
     .row2 { grid-template-columns: 1fr; }
-    .ing-row { grid-template-columns: 1fr; }
+    .ing-row {
+      grid-template-columns: 1fr;
+      border: 1px solid var(--border); border-radius: 10px; padding: 10px;
+      background: var(--surface-2);
+    }
+    .ing-row button {
+      justify-self: end; width: auto; font-size: 0.8rem; padding: 6px 10px;
+      border: 1px solid var(--border); border-radius: 7px; margin-top: 2px;
+    }
     .ing-head { display: none; }
   }
 </style>
@@ -1153,7 +1164,7 @@
       el("span", {}, [text("Kategori")]),
       el("span", {}, [])
     ]);
-    var ingList = el("div", { style: "display:flex;flex-direction:column;gap:6px;" }, []);
+    var ingList = el("div", { style: "display:flex;flex-direction:column;gap:10px;" }, []);
 
     function renderIngList() {
       ingList.innerHTML = "";
@@ -1170,10 +1181,10 @@
           return o;
         }));
         catF.addEventListener("change", function () { ing.category = catF.value; });
-        var rmBtn = el("button", { type: "button", title: "Ta bort rad", onclick: function () {
+        var rmBtn = el("button", { type: "button", title: "Ta bort den här ingrediensen", onclick: function () {
           formIngredients = formIngredients.filter(function (x) { return x._id !== ing._id; });
           renderIngList();
-        } }, [text("✕")]);
+        } }, [text("✕ Ta bort")]);
         ingList.appendChild(el("div", { class: "ing-row" }, [nameF, amtF, unitF, catF, rmBtn]));
       });
     }

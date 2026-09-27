@@ -149,7 +149,10 @@
   .detail-cols > div { flex: 1 1 240px; min-width: 0; }
   .detail-cols h3 { font-size: 1rem; margin-bottom: 8px; }
   .detail-cols ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 0.92rem; }
-  .detail-cols .instructions { font-size: 0.92rem; white-space: pre-wrap; line-height: 1.5; }
+  .detail-cols .ing-group-label { font-size: 0.82rem; font-weight: 600; color: var(--text-muted); margin: 10px 0 4px; }
+  .detail-cols .ing-group-label:first-child { margin-top: 0; }
+  .detail-cols .instructions { font-size: 0.92rem; line-height: 1.5; }
+  .detail-cols .instructions ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; }
   .detail-notes h3 { font-size: 1rem; margin-bottom: 8px; }
   .detail-notes p { font-size: 0.92rem; white-space: pre-wrap; line-height: 1.5; }
 
@@ -213,7 +216,7 @@
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
   .ing-row {
-    display: grid; grid-template-columns: 1.6fr 0.7fr 0.8fr 1.1fr auto; gap: 6px; align-items: center;
+    display: grid; grid-template-columns: 1.4fr 0.6fr 0.7fr 1fr 0.9fr auto; gap: 6px; align-items: center;
   }
   .ing-row input, .ing-row select {
     font: inherit; font-size: 0.85rem; padding: 7px 8px; border-radius: 7px;
@@ -223,7 +226,7 @@
     background: none; border: 1px solid var(--border); border-radius: 7px; color: var(--danger);
     cursor: pointer; font-size: 0.78rem; padding: 7px 8px; white-space: nowrap;
   }
-  .ing-head { display: grid; grid-template-columns: 1.6fr 0.7fr 0.8fr 1.1fr auto; gap: 6px; font-size: 0.72rem; color: var(--text-muted); font-weight: 600; }
+  .ing-head { display: grid; grid-template-columns: 1.4fr 0.6fr 0.7fr 1fr 0.9fr auto; gap: 6px; font-size: 0.72rem; color: var(--text-muted); font-weight: 600; }
 
   .modal-actions { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; }
   .modal-actions .right { display: flex; gap: 8px; }
@@ -1008,17 +1011,53 @@
     host.innerHTML = "";
 
     var ingredients = (r.recipe_ingredients || []).slice().sort(function (a, b) { return a.sort_order - b.sort_order; });
-    var ingList = el("ul", {}, ingredients.map(function (i) {
+
+    // Ingredienser utan grupp (huvudreceptet) visas i en vanlig lista.
+    // Ingredienser med en group_name (t.ex. "Aioli", tolkat ur receptet
+    // eller angivet för hand) visas i en egen mini-lista med rubrik, i den
+    // ordning grupperna först dyker upp bland ingredienserna.
+    function ingLi(i) {
       var parts = [];
       if (i.amount !== null && i.amount !== undefined) parts.push(Math.round(i.amount * 100) / 100);
       if (i.unit) parts.push(i.unit);
       parts.push(i.name);
       return el("li", {}, [text(parts.join(" "))]);
-    }));
+    }
+    var ungrouped = ingredients.filter(function (i) { return !i.group_name; });
+    var groupNames = [];
+    ingredients.forEach(function (i) {
+      if (i.group_name && groupNames.indexOf(i.group_name) === -1) groupNames.push(i.group_name);
+    });
+    var ingBlocks = [];
+    if (ungrouped.length) ingBlocks.push(el("ul", {}, ungrouped.map(ingLi)));
+    groupNames.forEach(function (g) {
+      var items = ingredients.filter(function (i) { return i.group_name === g; });
+      ingBlocks.push(el("div", { class: "ing-group-label" }, [text(g)]));
+      ingBlocks.push(el("ul", {}, items.map(ingLi)));
+    });
 
     var tagsRow = el("div", { class: "tagrow" }, (r.tags || []).map(function (t) {
       return el("span", { class: "tagchip static" }, [text(t)]);
     }));
+
+    // Instruktioner: ett steg per rad i databasen, men visas som en numrerad
+    // lista i stället för en löpande text — lättare att följa steg för steg.
+    // Plockar även bort ev. egen radnumrering ("1.", "2)", "- ") källan eller
+    // AI-tolkningen kan ha lagt till, så det inte blir dubbla nummer.
+    var instructionSteps = (r.instructions || "")
+      .split("\n")
+      .map(function (line) { return line.replace(/^\s*(?:\d+[.)]|[-*•])\s+/, "").trim(); })
+      .filter(Boolean);
+    var instructionsEl;
+    if (instructionSteps.length > 1) {
+      instructionsEl = el("div", { class: "instructions" }, [
+        el("ol", {}, instructionSteps.map(function (step) { return el("li", {}, [text(step)]); }))
+      ]);
+    } else if (instructionSteps.length === 1) {
+      instructionsEl = el("div", { class: "instructions" }, [text(instructionSteps[0])]);
+    } else {
+      instructionsEl = el("p", { style: "color:var(--text-muted);font-size:0.9rem;" }, [text("Inga instruktioner sparade.")]);
+    }
 
     var modalChildren = [
       el("h2", {}, [text(r.name)])
@@ -1028,13 +1067,11 @@
     modalChildren.push(el("div", { class: "detail-cols" }, [
       el("div", {}, [
         el("h3", {}, [text("Ingredienser")]),
-        ingredients.length ? ingList : el("p", { style: "color:var(--text-muted);font-size:0.9rem;" }, [text("Inga ingredienser sparade.")])
+        ingredients.length ? el("div", {}, ingBlocks) : el("p", { style: "color:var(--text-muted);font-size:0.9rem;" }, [text("Inga ingredienser sparade.")])
       ]),
       el("div", {}, [
         el("h3", {}, [text("Tillagning")]),
-        r.instructions
-          ? el("div", { class: "instructions" }, [text(r.instructions)])
-          : el("p", { style: "color:var(--text-muted);font-size:0.9rem;" }, [text("Inga instruktioner sparade.")])
+        instructionsEl
       ])
     ]));
     modalChildren.push(el("div", { class: "detail-notes" }, [
@@ -1060,14 +1097,14 @@
   var formIdCounter = 0;
 
   function openNewModal() {
-    formIngredients = [{ _id: formIdCounter++, name: "", amount: "", unit: "", category: "Övrigt" }];
+    formIngredients = [{ _id: formIdCounter++, name: "", amount: "", unit: "", category: "Övrigt", group: "" }];
     renderModal(null);
   }
   function openEditModal(r) {
     formIngredients = (r.recipe_ingredients || []).slice().sort(function (a, b) { return a.sort_order - b.sort_order; }).map(function (i) {
-      return { _id: formIdCounter++, name: i.name, amount: i.amount === null ? "" : i.amount, unit: i.unit || "", category: i.category || "Övrigt" };
+      return { _id: formIdCounter++, name: i.name, amount: i.amount === null ? "" : i.amount, unit: i.unit || "", category: i.category || "Övrigt", group: i.group_name || "" };
     });
-    if (!formIngredients.length) formIngredients = [{ _id: formIdCounter++, name: "", amount: "", unit: "", category: "Övrigt" }];
+    if (!formIngredients.length) formIngredients = [{ _id: formIdCounter++, name: "", amount: "", unit: "", category: "Övrigt", group: "" }];
     renderModal(r);
   }
 
@@ -1162,6 +1199,7 @@
       el("span", {}, [text("Mängd")]),
       el("span", {}, [text("Enhet")]),
       el("span", {}, [text("Kategori")]),
+      el("span", {}, [text("Del (valfritt)")]),
       el("span", {}, [])
     ]);
     var ingList = el("div", { style: "display:flex;flex-direction:column;gap:10px;" }, []);
@@ -1181,17 +1219,19 @@
           return o;
         }));
         catF.addEventListener("change", function () { ing.category = catF.value; });
+        var groupF = el("input", { type: "text", placeholder: "t.ex. Aioli", value: ing.group || "" });
+        groupF.addEventListener("input", function () { ing.group = groupF.value; });
         var rmBtn = el("button", { type: "button", title: "Ta bort den här ingrediensen", onclick: function () {
           formIngredients = formIngredients.filter(function (x) { return x._id !== ing._id; });
           renderIngList();
         } }, [text("✕ Ta bort")]);
-        ingList.appendChild(el("div", { class: "ing-row" }, [nameF, amtF, unitF, catF, rmBtn]));
+        ingList.appendChild(el("div", { class: "ing-row" }, [nameF, amtF, unitF, catF, groupF, rmBtn]));
       });
     }
     renderIngList();
 
     var addIngBtn = el("button", { type: "button", class: "btn small", onclick: function () {
-      formIngredients.push({ _id: formIdCounter++, name: "", amount: "", unit: "", category: "Övrigt" });
+      formIngredients.push({ _id: formIdCounter++, name: "", amount: "", unit: "", category: "Övrigt", group: "" });
       renderIngList();
     } }, [text("+ Lägg till ingrediens")]);
 
@@ -1230,7 +1270,8 @@
             name: i.name || "",
             amount: (i.amount === null || i.amount === undefined || i.amount === "") ? "" : i.amount,
             unit: i.unit || "",
-            category: CATEGORIES.indexOf(i.category) !== -1 ? i.category : "Övrigt"
+            category: CATEGORIES.indexOf(i.category) !== -1 ? i.category : "Övrigt",
+            group: (typeof i.group === "string" && i.group.trim()) ? i.group.trim() : ""
           };
         });
         renderIngList();
@@ -1305,7 +1346,8 @@
         // Om en mängd är satt men ingen enhet, räkna som "st" (se buildShoppingList)
         // så att samma ingrediens från olika recept slås ihop i inköpslistan.
         if (!unit && !isNaN(amt) && amt !== null) unit = "st";
-        return { name: i.name.trim(), amount: isNaN(amt) ? null : amt, unit: unit || null, category: i.category || "Övrigt", sort_order: idx };
+        var group = (i.group || "").trim();
+        return { name: i.name.trim(), amount: isNaN(amt) ? null : amt, unit: unit || null, category: i.category || "Övrigt", group_name: group || null, sort_order: idx };
       });
 
     var payload = {

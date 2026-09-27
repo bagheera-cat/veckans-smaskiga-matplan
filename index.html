@@ -788,13 +788,16 @@
     showBanner("info", "Valda recept och ikryssade varor är återställda.");
   }
 
-  // Enhetsomvandling för inköpslistan: ingredienser med samma namn men olika
-  // (men jämförbara) enheter — t.ex. "2 dl" och "2 msk" matyoghurt — ska slås
-  // ihop till en rad i stället för att bli två separata. Vikt och volym är
-  // varsin "familj" som räknas om till en gemensam basenhet (gram/milliliter)
-  // innan de summeras, och räknas sedan tillbaka till en läsbar enhet.
-  // Styckenheter (st, förpackning, klyfta, näve) går inte att räkna om
-  // mellan varandra, så de slås bara ihop när enheten är exakt densamma.
+  // Enhetsomvandling för inköpslistan: bara när SAMMA ingrediens dyker upp i
+  // flera recept MED olika enheter (t.ex. "2 dl" i ett recept och "2 msk" i
+  // ett annat) ska de räknas om till en gemensam enhet och slås ihop. Om
+  // ingrediensen bara förekommer i en enhet (oavsett om det är en eller
+  // flera rader) summeras den precis som förut, i sin egen enhet — ingen
+  // omvandling ska ske "i onödan" (t.ex. 300 g + 300 g ska förbli 600 g, inte
+  // bli omgjort till 0.6 kg). Vikt och volym är varsin "familj" som kan
+  // räknas om mot en gemensam basenhet (gram/milliliter). Styckenheter
+  // (st, förpackning, klyfta, näve) går inte att räkna om mellan varandra,
+  // så de slås bara ihop när enheten är exakt densamma.
   var UNIT_TO_BASE = {
     weight: { g: 1, kg: 1000 },
     volume: { ml: 1, l: 1000, dl: 100, msk: 15, tsk: 5 }
@@ -818,39 +821,61 @@
 
   function buildShoppingList() {
     var chosen = state.recipes.filter(function (r) { return state.selected.has(r.id); });
-    var map = {}; // key -> {name, unit, family, amount (bas-enhet om family), hasAmount, count, category}
+
+    // Steg 1: samla alla förekomster per ingrediensnamn, utan att summera än.
+    var byName = {}; // namn (lower) -> { name, category, entries: [{unit, amt}] }
     chosen.forEach(function (r) {
       (r.recipe_ingredients || []).forEach(function (ing) {
         var amt = ing.amount === null || ing.amount === undefined || ing.amount === "" ? null : Number(ing.amount);
-        // Normalisera enhet: om en mängd finns men ingen enhet är angiven (äldre
-        // recept, eller AI-tolkning som missat), räkna den som "st" så att t.ex.
-        // "1 gul lök" i två olika recept slås ihop till en rad i stället för två.
         var unit = (ing.unit || "").trim().toLowerCase();
         if (!unit && amt !== null && !isNaN(amt)) unit = "st";
-        var family = unitFamily(unit);
-        // Ingredienser i samma enhetsfamilj (vikt/volym) slås ihop oavsett
-        // exakt enhet; annars slås de bara ihop om enheten matchar exakt.
-        var key = ing.name.trim().toLowerCase() + "|" + (family || unit);
-        if (!map[key]) {
-          map[key] = { name: ing.name.trim(), unit: family ? null : unit, family: family, amount: 0, hasAmount: false, count: 0, category: ing.category || "Övrigt" };
-        }
-        map[key].count += 1;
-        if (amt !== null && !isNaN(amt)) {
-          map[key].hasAmount = true;
-          map[key].amount += family ? amt * UNIT_TO_BASE[family][unit] : amt;
-        }
+        var nameKey = ing.name.trim().toLowerCase();
+        if (!byName[nameKey]) byName[nameKey] = { name: ing.name.trim(), category: ing.category || "Övrigt", entries: [] };
+        byName[nameKey].entries.push({ unit: unit, amt: amt });
       });
     });
-    // Räkna om ihopsummerade vikt/volym-mängder (som ligger i g/ml) tillbaka
-    // till en läsbar enhet (kg/g resp. l/dl/ml) för visning.
-    Object.keys(map).forEach(function (k) {
-      var item = map[k];
-      if (item.family && item.hasAmount) {
-        var disp = fromBase(item.family, item.amount);
-        item.amount = disp.amount;
-        item.unit = disp.unit;
-      }
+
+    // Steg 2: dela upp varje ingrediens i undergrupper — samma enhetsfamilj
+    // (vikt/volym) hamnar tillsammans, annars grupperas de per exakt enhet
+    // (så t.ex. "st" och "g" av samma ingrediens INTE blandas ihop). Bara om
+    // en sådan grupp faktiskt innehåller mer än en distinkt enhet räknas
+    // mängderna om till en gemensam enhet — annars summeras de rakt av i sin
+    // ursprungliga enhet.
+    var map = {}; // key -> {name, unit, amount, hasAmount, count, category}
+    Object.keys(byName).forEach(function (nameKey) {
+      var group = byName[nameKey];
+      var subgroups = {}; // subKey -> { family, entries: [] }
+      group.entries.forEach(function (e) {
+        var family = unitFamily(e.unit);
+        var subKey = family || e.unit;
+        if (!subgroups[subKey]) subgroups[subKey] = { family: family, entries: [] };
+        subgroups[subKey].entries.push(e);
+      });
+      Object.keys(subgroups).forEach(function (subKey) {
+        var sub = subgroups[subKey];
+        var distinctUnits = {};
+        sub.entries.forEach(function (e) { if (e.unit) distinctUnits[e.unit] = true; });
+        var shouldConvert = sub.family && Object.keys(distinctUnits).length > 1;
+        var hasAmount = false;
+        var amount = 0;
+        var displayUnit = sub.entries.length ? sub.entries[0].unit : "";
+        sub.entries.forEach(function (e) {
+          if (e.amt === null || isNaN(e.amt)) return;
+          hasAmount = true;
+          amount += shouldConvert ? e.amt * UNIT_TO_BASE[sub.family][e.unit] : e.amt;
+        });
+        if (shouldConvert && hasAmount) {
+          var disp = fromBase(sub.family, amount);
+          amount = disp.amount;
+          displayUnit = disp.unit;
+        }
+        map[nameKey + "|" + subKey] = {
+          name: group.name, unit: displayUnit, amount: amount, hasAmount: hasAmount,
+          count: sub.entries.length, category: group.category
+        };
+      });
     });
+
     var byCat = {};
     Object.keys(map).forEach(function (k) {
       var item = map[k];

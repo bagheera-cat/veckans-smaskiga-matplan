@@ -2,6 +2,9 @@
 //
 // Tar emot antingen { url } eller { image, mediaType } och returnerar
 // strukturerad receptdata: { name, tags, ingredients: [...], instructions }.
+// Vid { url } tillkommer även "image_url" (sidans og:image), om en sådan
+// hittas — aldrig vid { image }, en uppladdad egen bild blir inte automatiskt
+// receptbilden.
 //
 // Nyckeln till Anthropic-API:et läses från en secret (ANTHROPIC_API_KEY),
 // aldrig från klienten — det är hela poängen med att detta ligger i en
@@ -53,6 +56,27 @@ function extractJson(raw) {
   return JSON.parse(match[0]);
 }
 
+// Plockar ut sidans "hero"-bild (och därmed troligen receptbilden) ur
+// og:image/twitter:image-metataggar, innan HTML:en städas bort för
+// textutdraget. Görs deterministiskt utan AI — sidor lägger nästan alltid
+// receptbilden här. Bara relevant för länk-importen, aldrig för uppladdade
+// egna bilder (de ska inte automatiskt bli receptbilden).
+function extractImageUrl(html, baseUrl) {
+  var patterns = [
+    /<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image(?::secure_url)?["']/i,
+    /<meta[^>]+name=["']twitter:image(?::src)?["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image(?::src)?["']/i
+  ];
+  for (var i = 0; i < patterns.length; i++) {
+    var m = html.match(patterns[i]);
+    if (m && m[1]) {
+      try { return new URL(m[1], baseUrl).href; } catch (e) { return m[1]; }
+    }
+  }
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS_HEADERS });
@@ -78,6 +102,7 @@ Deno.serve(async (req) => {
       });
       if (!pageRes.ok) throw new Error("Kunde inte hämta sidan (status " + pageRes.status + ").");
       var html = await pageRes.text();
+      var imageUrl = extractImageUrl(html, body.url);
       var pageText = stripHtml(html).slice(0, 18000);
       if (!pageText) throw new Error("Sidan verkar sakna textinnehåll.");
       content = [{ type: "text", text: PROMPT + "\n\nHär är sidans textinnehåll:\n\n" + pageText }];
@@ -107,6 +132,9 @@ Deno.serve(async (req) => {
     var aiData = await aiRes.json();
     var rawText = (aiData.content && aiData.content[0] && aiData.content[0].text) || "";
     var parsed = extractJson(rawText);
+    // Bara satt för länk-importen (se ovan) — en uppladdad egen bild av
+    // receptet ska aldrig automatiskt bli receptets bild.
+    if (typeof imageUrl !== "undefined") parsed.image_url = imageUrl;
 
     return new Response(JSON.stringify(parsed), {
       headers: Object.assign({ "content-type": "application/json" }, CORS_HEADERS)

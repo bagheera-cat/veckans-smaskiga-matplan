@@ -152,7 +152,7 @@
   .detail-cols .ing-group-label { font-size: 0.82rem; font-weight: 600; color: var(--text-muted); margin: 10px 0 4px; }
   .detail-cols .ing-group-label:first-child { margin-top: 0; }
   .detail-cols .instructions { font-size: 0.92rem; line-height: 1.5; }
-  .detail-cols .instructions ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; }
+  .detail-cols .instructions ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; }
   .detail-notes h3 { font-size: 1rem; margin-bottom: 8px; }
   .detail-notes p { font-size: 0.92rem; white-space: pre-wrap; line-height: 1.5; }
 
@@ -1040,10 +1040,10 @@
       return el("span", { class: "tagchip static" }, [text(t)]);
     }));
 
-    // Instruktioner: ett steg per rad i databasen, men visas som en numrerad
-    // lista i stället för en löpande text — lättare att följa steg för steg.
+    // Instruktioner: ett steg per rad i databasen, men visas som en
+    // punktlista i stället för en löpande text — lättare att följa steg för steg.
     // Plockar även bort ev. egen radnumrering ("1.", "2)", "- ") källan eller
-    // AI-tolkningen kan ha lagt till, så det inte blir dubbla nummer.
+    // AI-tolkningen kan ha lagt till, så det inte dyker upp dubbla markörer.
     var instructionSteps = (r.instructions || "")
       .split("\n")
       .map(function (line) { return line.replace(/^\s*(?:\d+[.)]|[-*•])\s+/, "").trim(); })
@@ -1051,7 +1051,7 @@
     var instructionsEl;
     if (instructionSteps.length > 1) {
       instructionsEl = el("div", { class: "instructions" }, [
-        el("ol", {}, instructionSteps.map(function (step) { return el("li", {}, [text(step)]); }))
+        el("ul", {}, instructionSteps.map(function (step) { return el("li", {}, [text(step)]); }))
       ]);
     } else if (instructionSteps.length === 1) {
       instructionsEl = el("div", { class: "instructions" }, [text(instructionSteps[0])]);

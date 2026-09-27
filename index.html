@@ -155,6 +155,7 @@
   .detail-cols .instructions ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; }
   .detail-notes h3 { font-size: 1rem; margin-bottom: 8px; }
   .detail-notes p { font-size: 0.92rem; white-space: pre-wrap; line-height: 1.5; }
+  .detail-notes a { color: var(--accent); word-break: break-all; }
 
   .rating { display: flex; flex-wrap: wrap; gap: 16px; }
   .rating-person { display: flex; align-items: center; gap: 4px; }
@@ -709,7 +710,7 @@
         })
       ]);
       var cardChildren = [];
-      if (r.image_url) cardChildren.push(el("img", { class: "thumb", src: r.image_url, alt: r.name }));
+      if (r.image_url) cardChildren.push(el("img", { class: "thumb", src: r.image_url, alt: r.name, style: "cursor:pointer;", onclick: function () { openDetailModal(r); } }));
       cardChildren.push(
         el("h3", {}, [text(r.name)]),
         meta,
@@ -1080,6 +1081,12 @@
         ? el("p", {}, [text(r.notes)])
         : el("p", { style: "color:var(--text-muted);font-size:0.9rem;" }, [text("Inga anteckningar sparade.")])
     ]));
+    if (r.source_url) {
+      modalChildren.push(el("div", { class: "detail-notes" }, [
+        el("h3", {}, [text("Länk")]),
+        el("p", {}, [el("a", { href: r.source_url, target: "_blank", rel: "noopener noreferrer" }, [text(r.source_url)])])
+      ]));
+    }
     modalChildren.push(el("div", { class: "modal-actions" }, [
       el("span"),
       el("div", { class: "right" }, [

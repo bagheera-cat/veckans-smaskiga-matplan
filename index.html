@@ -281,6 +281,7 @@
         <input type="date" id="weekStartInput" class="sortsel">
       </label>
       <span style="font-size:0.85rem;color:var(--text-muted);white-space:nowrap;" id="weekCount">0 valda</span>
+      <button class="btn small" id="resetWeekBtn" title="Avmarkera valda recept och kryssade varor">Återställ</button>
     </div>
     <div id="weekList" class="grid" style="grid-template-columns: 1fr;"></div>
 
@@ -751,6 +752,17 @@
   function toggleSelected(id) {
     if (state.selected.has(id)) state.selected.delete(id); else state.selected.add(id);
     renderWeekPanel();
+  }
+
+  // Nollställer både vilka recept som är valda för veckan och vilka varor
+  // som är ikryssade i inköpslistan — utan att röra sparad historik eller
+  // själva recepten.
+  function resetWeekSelection() {
+    if (!state.selected.size && !state.checkedShop.size) return;
+    state.selected = new Set();
+    state.checkedShop = new Set();
+    renderWeekPanel();
+    showBanner("info", "Valda recept och ikryssade varor är återställda.");
   }
 
   function buildShoppingList() {
@@ -1330,6 +1342,7 @@
   $("#recipeSearch").addEventListener("input", function (e) { state.recipeSearch = e.target.value; renderRecipesPanel(); });
   $("#recipeSort").addEventListener("change", function (e) { state.recipeSort = e.target.value; renderRecipesPanel(); });
   $("#weekSearch").addEventListener("input", function (e) { state.weekSearch = e.target.value; renderWeekPanel(); });
+  $("#resetWeekBtn").addEventListener("click", resetWeekSelection);
   $("#newRecipeBtn").addEventListener("click", openNewModal);
   $("#copyListBtn").addEventListener("click", copyShoppingList);
   $("#savePlanBtn").addEventListener("click", savePlan);

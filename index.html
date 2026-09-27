@@ -305,6 +305,7 @@
       <div id="shopList"></div>
       <div class="toolbar" style="margin-top:12px;">
         <button class="btn" id="copyListBtn">Kopiera lista</button>
+        <button class="btn" id="copyListWillysBtn">Kopiera lista Willys</button>
         <button class="btn primary" id="savePlanBtn">Spara veckoplan</button>
       </div>
     </div>
@@ -872,6 +873,29 @@
     });
   }
 
+  // "Kopiera lista Willys": samma underlag som den vanliga inköpslistan
+  // (buildShoppingList), men utan kategirubriker och i formatet
+  // "Namn (mängd enhet)" — ett plockat namn per rad, redo att klistras in
+  // i sökrutan på Willys.se en rad i taget.
+  function copyShoppingListWillys() {
+    var byCat = buildShoppingList();
+    var items = [];
+    Object.keys(byCat).forEach(function (cat) { items = items.concat(byCat[cat]); });
+    items.sort(function (a, b) { return a.name.localeCompare(b.name, "sv"); });
+    var lines = items.map(function (item) {
+      var name = item.name.charAt(0).toUpperCase() + item.name.slice(1);
+      if (!item.hasAmount) return name;
+      var qty = Math.round(item.amount * 100) / 100;
+      return name + " (" + qty + (item.unit ? " " + item.unit : "") + ")";
+    });
+    var out = lines.join("\n");
+    navigator.clipboard.writeText(out).then(function () {
+      showBanner("info", "Willys-listan kopierad.");
+    }).catch(function () {
+      showBanner("error", "Kunde inte kopiera automatiskt — markera texten manuellt.");
+    });
+  }
+
   function savePlan() {
     if (!state.selected.size) return;
     var ids = Array.from(state.selected);
@@ -1405,6 +1429,7 @@
   $("#resetWeekBtn").addEventListener("click", resetWeekSelection);
   $("#newRecipeBtn").addEventListener("click", openNewModal);
   $("#copyListBtn").addEventListener("click", copyShoppingList);
+  $("#copyListWillysBtn").addEventListener("click", copyShoppingListWillys);
   $("#savePlanBtn").addEventListener("click", savePlan);
   $("#weekStartInput").value = state.weekStart;
 

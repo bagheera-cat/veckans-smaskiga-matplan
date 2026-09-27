@@ -788,24 +788,68 @@
     showBanner("info", "Valda recept och ikryssade varor är återställda.");
   }
 
+  // Enhetsomvandling för inköpslistan: ingredienser med samma namn men olika
+  // (men jämförbara) enheter — t.ex. "2 dl" och "2 msk" matyoghurt — ska slås
+  // ihop till en rad i stället för att bli två separata. Vikt och volym är
+  // varsin "familj" som räknas om till en gemensam basenhet (gram/milliliter)
+  // innan de summeras, och räknas sedan tillbaka till en läsbar enhet.
+  // Styckenheter (st, förpackning, klyfta, näve) går inte att räkna om
+  // mellan varandra, så de slås bara ihop när enheten är exakt densamma.
+  var UNIT_TO_BASE = {
+    weight: { g: 1, kg: 1000 },
+    volume: { ml: 1, l: 1000, dl: 100, msk: 15, tsk: 5 }
+  };
+  function unitFamily(unit) {
+    if (Object.prototype.hasOwnProperty.call(UNIT_TO_BASE.weight, unit)) return "weight";
+    if (Object.prototype.hasOwnProperty.call(UNIT_TO_BASE.volume, unit)) return "volume";
+    return null;
+  }
+  function roundNice(n) { return Math.round(n * 100) / 100; }
+  function fromBase(family, baseAmount) {
+    if (family === "weight") {
+      if (baseAmount >= 1000) return { amount: roundNice(baseAmount / 1000), unit: "kg" };
+      return { amount: roundNice(baseAmount), unit: "g" };
+    }
+    // volume
+    if (baseAmount >= 1000) return { amount: roundNice(baseAmount / 1000), unit: "l" };
+    if (baseAmount >= 100) return { amount: roundNice(baseAmount / 100), unit: "dl" };
+    return { amount: roundNice(baseAmount), unit: "ml" };
+  }
+
   function buildShoppingList() {
     var chosen = state.recipes.filter(function (r) { return state.selected.has(r.id); });
-    var map = {}; // key -> {name, unit, amount, hasAmount, count, category}
+    var map = {}; // key -> {name, unit, family, amount (bas-enhet om family), hasAmount, count, category}
     chosen.forEach(function (r) {
       (r.recipe_ingredients || []).forEach(function (ing) {
         var amt = ing.amount === null || ing.amount === undefined || ing.amount === "" ? null : Number(ing.amount);
         // Normalisera enhet: om en mängd finns men ingen enhet är angiven (äldre
         // recept, eller AI-tolkning som missat), räkna den som "st" så att t.ex.
         // "1 gul lök" i två olika recept slås ihop till en rad i stället för två.
-        var unit = (ing.unit || "").trim();
+        var unit = (ing.unit || "").trim().toLowerCase();
         if (!unit && amt !== null && !isNaN(amt)) unit = "st";
-        var key = ing.name.trim().toLowerCase() + "|" + unit.toLowerCase();
+        var family = unitFamily(unit);
+        // Ingredienser i samma enhetsfamilj (vikt/volym) slås ihop oavsett
+        // exakt enhet; annars slås de bara ihop om enheten matchar exakt.
+        var key = ing.name.trim().toLowerCase() + "|" + (family || unit);
         if (!map[key]) {
-          map[key] = { name: ing.name.trim(), unit: unit, amount: 0, hasAmount: false, count: 0, category: ing.category || "Övrigt" };
+          map[key] = { name: ing.name.trim(), unit: family ? null : unit, family: family, amount: 0, hasAmount: false, count: 0, category: ing.category || "Övrigt" };
         }
         map[key].count += 1;
-        if (amt !== null && !isNaN(amt)) { map[key].amount += amt; map[key].hasAmount = true; }
+        if (amt !== null && !isNaN(amt)) {
+          map[key].hasAmount = true;
+          map[key].amount += family ? amt * UNIT_TO_BASE[family][unit] : amt;
+        }
       });
+    });
+    // Räkna om ihopsummerade vikt/volym-mängder (som ligger i g/ml) tillbaka
+    // till en läsbar enhet (kg/g resp. l/dl/ml) för visning.
+    Object.keys(map).forEach(function (k) {
+      var item = map[k];
+      if (item.family && item.hasAmount) {
+        var disp = fromBase(item.family, item.amount);
+        item.amount = disp.amount;
+        item.unit = disp.unit;
+      }
     });
     var byCat = {};
     Object.keys(map).forEach(function (k) {

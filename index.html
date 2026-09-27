@@ -205,8 +205,15 @@
   .modal {
     background: var(--surface); border-radius: 16px; padding: 22px; width: 100%; max-width: 560px;
     display: flex; flex-direction: column; gap: 14px; box-shadow: var(--shadow); margin-block: auto;
+    position: relative;
   }
-  .modal h2 { font-size: 1.3rem; }
+  .modal-close {
+    position: absolute; top: 14px; right: 14px; width: 30px; height: 30px; display: flex;
+    align-items: center; justify-content: center; background: none; border: none; border-radius: 8px;
+    color: var(--text-muted); cursor: pointer; font-size: 1.3rem; line-height: 1; padding: 0;
+  }
+  .modal-close:hover { background: var(--surface-2); color: var(--text); }
+  .modal h2 { font-size: 1.3rem; padding-right: 34px; }
   .field { display: flex; flex-direction: column; gap: 5px; }
   .field label { font-size: 0.78rem; font-weight: 600; color: var(--text-muted); }
   .field input, .field textarea {
@@ -1119,6 +1126,7 @@
     ]));
 
     var modal = el("div", { class: "modal detail-modal" }, modalChildren);
+    modal.insertBefore(el("button", { type: "button", class: "modal-close", title: "Stäng", onclick: function () { host.innerHTML = ""; } }, [text("✕")]), modal.firstChild);
     host.appendChild(el("div", { class: "modal-backdrop", onclick: function (e) { if (e.target.classList.contains("modal-backdrop")) host.innerHTML = ""; } }, [modal]));
   }
 
@@ -1346,6 +1354,7 @@
     ]);
 
     var modal = el("div", { class: "modal" }, [
+      el("button", { type: "button", class: "modal-close", title: "Stäng", onclick: function () { host.innerHTML = ""; } }, [text("✕")]),
       el("h2", {}, [text(editingRecipe ? "Redigera recept" : "Nytt recept")]),
       importSection,
       el("div", { class: "field" }, [el("label", {}, [text("Namn")]), nameInput]),

@@ -36,19 +36,32 @@ Regler:
 - Skriv alltid ingrediensnamnet i obestämd singular grundform (t.ex. "gul lök", "vitlöksklyfta", "tomat") så att samma ingrediens från olika recept får exakt samma namn och kan slås ihop i inköpslistan.
 - "category" MÅSTE vara exakt en av: ${CATEGORIES.join(", ")}. Välj den som passar bäst.
 - "group" ska vara null för de allra flesta ingredienser (huvudreceptets ingredienser, i en enda lista precis som vanligt). Sätt bara "group" till ett kort namn (t.ex. "Aioli", "Dressing", "Fyllning", "Garnering") för de ingredienser som i KÄLLAN faktiskt står listade under en egen namngiven underrubrik, skild från huvudingredienserna. Hitta ALDRIG på en uppdelning själv — bara spegla en uppdelning som redan finns i receptet. Om receptet bara har en enda ingredienslista, ska alla ingredienser ha "group": null.
-- "instructions" ska innehålla tillagningsstegen i ordning, som vanlig text, ETT STEG PER RAD (skilj raderna åt med \\n). Skriv bara själva steget på varje rad — lägg INTE till egen numrering, punktlistetecken eller "Steg 1:" framför, även om källan har det (sidan som visar receptet numrerar stegen själv). Om receptet inte har några instruktioner, använd null.
+- "instructions" ska innehålla tillagningsstegen i ordning, som vanlig text, ETT STEG PER RAD (skilj raderna åt med \\n). Skriv bara själva steget på varje rad — lägg INTE till egen numrering, punktlistetecken eller "Steg 1:" framför, även om källan har det (sidan som visar receptet numrerar stegen själv). Följ KÄLLANS egen indelning i steg EXAKT — en rad i utdatan ska motsvara precis ett steg/en punkt i källan, inte en mening. Radbrytningarna i sidans textinnehåll (när det är en länk-import) markerar var sidans egna listpunkter/stycken går — använd dem som facit för var ett steg slutar och nästa börjar. Om ett steg i källan innehåller flera meningar (t.ex. "Sätt ugnen på 225°C. Smörj formen med olja."), ska HELA det steget vara kvar på samma rad — dela ALDRIG upp ett steg i flera rader bara för att det har flera meningar. Om källan saknar tydlig stegindelning (löpande text utan numrering eller styckesbrytningar), dela då själv upp texten i rimliga steg. Om receptet inte har några instruktioner, använd null.
 - Om du inte kan hitta ett recept alls, returnera { "name": null, "tags": [], "ingredients": [], "instructions": null }.
 - Svara ENDAST med JSON-objektet, ingenting annat.`;
 
+// Görs om HTML till läsbar text, men bevarar sidans rad-/styckeindelning
+// (varje <li>, <p>, <br>, <div> osv. blir en egen rad i utdatan) i stället
+// för att slå ihop allt till en enda lång rad. Det är avgörande för
+// tillagningsinstruktioner: många receptsidor lägger varje steg i ett eget
+// listelement, och om den gränsen försvinner innan texten når AI:n måste
+// den gissa var ett steg slutar och nästa börjar — då delar den ofta upp
+// varje MENING som ett eget steg i stället för att följa sidans faktiska
+// stegindelning.
+var BLOCK_END_TAGS = /<\/(li|p|div|tr|h[1-6]|section|article|ul|ol|table)\s*>/gi;
 function stripHtml(html) {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
     .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(BLOCK_END_TAGS, "\n")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
-    .replace(/\s+/g, " ")
+    .replace(/[ \t]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 

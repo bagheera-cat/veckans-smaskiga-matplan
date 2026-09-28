@@ -175,6 +175,12 @@
   .weekcard.on { border-color: var(--accent); background: var(--accent-soft); }
   .weekcard .body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .weekcard h3 { font-size: 1rem; font-weight: 600; }
+  .weekcard-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
+  .week-servings { display: flex; align-items: center; gap: 5px; font-size: 0.78rem; color: var(--text-muted); white-space: nowrap; }
+  .week-servings-input {
+    width: 3em; font: inherit; font-size: 0.85rem; padding: 5px 6px; border-radius: 7px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text); text-align: center;
+  }
 
   .empty {
     border: 1px dashed var(--border); border-radius: 14px; padding: 28px 16px;
@@ -346,6 +352,12 @@
     recipeSort: "name",
     activeTagFilter: null,
     selected: new Set(),
+    // Antal portioner man faktiskt tänker laga DENNA vecka, per recept-id —
+    // skiljer sig från receptets sparade r.servings (som är receptets
+    // "grundmått"). Bara satt om man ändrat det i veckovyn; annars används
+    // receptets eget värde. Gäller bara den här veckoplaneringen, sparas
+    // aldrig till receptet.
+    weekServings: {},
     checkedShop: new Set(),
     editing: null, // recipe object being edited, or {} for new
     banner: null,
@@ -757,17 +769,43 @@
     }
 
     list.forEach(function (r) {
+      var bodyChildren = [
+        el("h3", {}, [text(r.name)]),
+        el("div", { class: "meta", style: "color:var(--text-muted);font-size:0.78rem;" }, [
+          text((r.recipe_ingredients || []).length + " ingredienser · " + (r.last_cooked_at ? "senast lagad " + fmtDate(r.last_cooked_at) : "inte lagad än"))
+        ])
+      ];
+      var actionsChildren = [];
+      if (r.servings) {
+        // Portionsjustering gäller bara den här veckoplaneringen (state.weekServings) —
+        // receptets eget sparade portionstal (r.servings) ändras aldrig här.
+        // Inköpslistan skalas om i buildShoppingList utifrån förhållandet mellan
+        // det här värdet och receptets grundmått.
+        var servingsInput = el("input", {
+          type: "number", min: "1", inputmode: "numeric", class: "week-servings-input",
+          title: "Antal portioner den här veckan (skalar inköpslistan, ändrar inte receptet)"
+        });
+        servingsInput.value = state.weekServings[r.id] || r.servings;
+        servingsInput.addEventListener("click", function (e) { e.stopPropagation(); });
+        servingsInput.addEventListener("input", function () {
+          var v = parseFloat(servingsInput.value.replace(",", "."));
+          if (!isFinite(v) || v <= 0) return;
+          state.weekServings[r.id] = v;
+          renderShoppingList();
+        });
+        actionsChildren.push(el("label", { class: "week-servings", onclick: function (e) { e.stopPropagation(); } }, [
+          servingsInput,
+          text(" port. (av " + r.servings + ")")
+        ]));
+      }
+      actionsChildren.push(el("button", {
+        type: "button", class: "btn small", title: "Ta bort från veckoplanen",
+        onclick: function (e) { e.stopPropagation(); toggleSelected(r.id); }
+      }, [text("✕ Ta bort")]));
+
       var card = el("div", { class: "weekcard on" }, [
-        el("div", { class: "body" }, [
-          el("h3", {}, [text(r.name)]),
-          el("div", { class: "meta", style: "color:var(--text-muted);font-size:0.78rem;" }, [
-            text((r.recipe_ingredients || []).length + " ingredienser · " + (r.last_cooked_at ? "senast lagad " + fmtDate(r.last_cooked_at) : "inte lagad än"))
-          ])
-        ]),
-        el("button", {
-          type: "button", class: "btn small", title: "Ta bort från veckoplanen",
-          onclick: function (e) { e.stopPropagation(); toggleSelected(r.id); }
-        }, [text("✕ Ta bort")])
+        el("div", { class: "body" }, bodyChildren),
+        el("div", { class: "weekcard-actions" }, actionsChildren)
       ]);
       host.appendChild(card);
     });
@@ -777,7 +815,12 @@
   }
 
   function toggleSelected(id) {
-    if (state.selected.has(id)) state.selected.delete(id); else state.selected.add(id);
+    if (state.selected.has(id)) {
+      state.selected.delete(id);
+      delete state.weekServings[id];
+    } else {
+      state.selected.add(id);
+    }
     renderWeekPanel();
     // Veckoplans-knappen på receptkorten (recept-vyn) ska spegla vald status
     // direkt, oavsett om det var den eller kryssrutan i veckovyn som klickades.
@@ -790,6 +833,7 @@
   function resetWeekSelection() {
     if (!state.selected.size && !state.checkedShop.size) return;
     state.selected = new Set();
+    state.weekServings = {};
     state.checkedShop = new Set();
     renderWeekPanel();
     showBanner("info", "Valda recept och ikryssade varor är återställda.");
@@ -832,8 +876,17 @@
     // Steg 1: samla alla förekomster per ingrediensnamn, utan att summera än.
     var byName = {}; // namn (lower) -> { name, category, entries: [{unit, amt}] }
     chosen.forEach(function (r) {
+      // Om man ändrat antal portioner för DEN HÄR veckan (state.weekServings)
+      // skalas receptets ingrediensmängder om i förhållande till receptets
+      // eget grundmått (r.servings) — t.ex. dubbel sats till besök. Ändrar
+      // aldrig receptet i databasen, bara den här inköpslistan.
+      var scale = 1;
+      if (r.servings && state.weekServings[r.id]) {
+        scale = state.weekServings[r.id] / r.servings;
+      }
       (r.recipe_ingredients || []).forEach(function (ing) {
         var amt = ing.amount === null || ing.amount === undefined || ing.amount === "" ? null : Number(ing.amount);
+        if (amt !== null && !isNaN(amt) && scale !== 1) amt = amt * scale;
         var unit = (ing.unit || "").trim().toLowerCase();
         if (!unit && amt !== null && !isNaN(amt)) unit = "st";
         var nameKey = ing.name.trim().toLowerCase();
@@ -875,6 +928,12 @@
           var disp = fromBase(sub.family, amount);
           amount = disp.amount;
           displayUnit = disp.unit;
+        } else if (hasAmount) {
+          amount = roundNice(amount);
+          // Styckenheter (st, förpackning, klyfta, näve m.fl.) går inte att
+          // handla i decimaltal — särskilt efter en portionsskalning (t.ex.
+          // 1.5 lök) rundas de uppåt till närmaste hela enhet.
+          if (!sub.family) amount = Math.ceil(amount - 1e-9);
         }
         map[nameKey + "|" + subKey] = {
           name: group.name, unit: displayUnit, amount: amount, hasAmount: hasAmount,
@@ -1101,6 +1160,7 @@
                 .then(function () {
                   state.recipes = state.recipes.filter(function (x) { return x.id !== r.id; });
                   state.selected.delete(r.id);
+                  delete state.weekServings[r.id];
                   host.innerHTML = "";
                   render();
                 })

@@ -719,12 +719,18 @@
       ]);
       var cardChildren = [];
       if (r.image_url) cardChildren.push(el("img", { class: "thumb", src: r.image_url, alt: r.name, style: "cursor:pointer;", onclick: function () { openDetailModal(r); } }));
+      var inWeek = state.selected.has(r.id);
       cardChildren.push(
         el("h3", {}, [text(r.name)]),
         meta,
         tagsRow,
         ratingRow,
         el("div", { class: "actions" }, [
+          el("button", {
+            class: "btn small" + (inWeek ? " primary" : ""),
+            title: inWeek ? "Ta bort från veckoplanen" : "Lägg till i veckoplanen",
+            onclick: function () { toggleSelected(r.id); }
+          }, [text(inWeek ? "✓ I veckoplanen" : "+ Veckoplan")]),
           el("button", { class: "btn small", onclick: function () { openDetailModal(r); } }, [text("Visa")]),
           el("button", { class: "btn small", onclick: function () { openEditModal(r); } }, [text("Redigera")]),
           el("button", { class: "btn small danger", onclick: function () { deleteRecipe(r); } }, [text("Ta bort")])
@@ -775,6 +781,9 @@
   function toggleSelected(id) {
     if (state.selected.has(id)) state.selected.delete(id); else state.selected.add(id);
     renderWeekPanel();
+    // Veckoplans-knappen på receptkorten (recept-vyn) ska spegla vald status
+    // direkt, oavsett om det var den eller kryssrutan i veckovyn som klickades.
+    if (state.activeTab === "recipes") renderRecipesPanel();
   }
 
   // Nollställer både vilka recept som är valda för veckan och vilka varor

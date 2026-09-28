@@ -210,18 +210,13 @@
   .shoplist .qty { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-muted); min-width: 3.2em; }
   .shoplist .shop-name { flex: 1 1 auto; min-width: 0; }
   .shop-comment {
-    font: inherit; font-size: 0.8rem; font-style: italic; padding: 4px 8px; border-radius: 999px;
-    border: 1px solid transparent; background: transparent; color: var(--text-muted); width: 11em;
+    font: inherit; font-size: 0.8rem; padding: 4px 10px; border-radius: 999px;
+    border: 1px dashed var(--border); background: var(--surface-2); color: var(--text); width: 9.5em;
     flex-shrink: 0; text-decoration: none !important;
   }
-  .shop-comment:hover, .shop-comment:focus { border-color: var(--border); background: var(--surface-2); outline: none; }
-  .shop-comment::placeholder { color: var(--text-muted); opacity: 0.55; }
-  .shoplist-header {
-    display: flex; align-items: center; gap: 8px; font-size: 0.72rem; font-weight: 600;
-    color: var(--text-muted); padding: 0 2px 8px; border-bottom: 1px solid var(--border);
-  }
-  .shoplist-header-spacer { width: calc(15px + 3.2em + 16px); flex-shrink: 0; }
-  .shop-comment-head { width: 11em; flex-shrink: 0; }
+  .shop-comment:hover { border-style: solid; }
+  .shop-comment:focus { border-style: solid; border-color: var(--accent); background: var(--surface); outline: none; }
+  .shop-comment::placeholder { color: var(--text-muted); opacity: 0.7; }
 
   .modal-backdrop {
     position: fixed; inset: 0; background: rgba(20,24,15,0.45); display: flex; align-items: flex-start;
@@ -1001,14 +996,6 @@
     var cats = CATEGORIES.filter(function (c) { return byCat[c]; });
 
     var container = el("div", { class: "shoplist" }, []);
-    // Rubrikrad över hela listan (en gång, inte per kategori) så
-    // kommentarfältet inte behöver en egen platshållartext på varje rad —
-    // det räcker att kolumnen heter "Kommentar" högst upp.
-    container.appendChild(el("div", { class: "shoplist-header" }, [
-      el("span", { class: "shoplist-header-spacer" }, []),
-      el("span", { class: "shop-name" }, [text("Vara")]),
-      el("span", { class: "shop-comment-head" }, [text("Kommentar")])
-    ]));
     cats.forEach(function (cat) {
       container.appendChild(el("div", { class: "cathead" }, [text(cat)]));
       var ul = el("ul", {}, []);

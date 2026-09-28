@@ -170,10 +170,9 @@
 
   .weekcard {
     background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
-    padding: 12px 14px; display: flex; align-items: flex-start; gap: 12px; cursor: pointer;
+    padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px;
   }
   .weekcard.on { border-color: var(--accent); background: var(--accent-soft); }
-  .weekcard input[type=checkbox] { margin-top: 3px; width: 17px; height: 17px; accent-color: var(--accent); flex-shrink: 0; }
   .weekcard .body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .weekcard h3 { font-size: 1rem; font-weight: 600; }
 
@@ -297,7 +296,6 @@
 
   <section class="panel" id="panel-week" hidden>
     <div class="toolbar">
-      <input class="search" id="weekSearch" type="text" placeholder="Sök bland recepten…">
       <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:var(--text-muted);white-space:nowrap;">
         Veckostart
         <input type="date" id="weekStartInput" class="sortsel">
@@ -346,7 +344,6 @@
     activeTab: "recipes",
     recipeSearch: "",
     recipeSort: "name",
-    weekSearch: "",
     activeTagFilter: null,
     selected: new Set(),
     checkedShop: new Set(),
@@ -743,33 +740,33 @@
 
   // ---------- render: week tab ----------
 
+  // Veckovyn listar bara de recept som redan är valda (via "+ Veckoplan"-
+  // knappen i recept-vyn) — ingen egen sök/bläddra-lista här längre.
   function renderWeekPanel() {
     var host = $("#weekList");
     host.innerHTML = "";
     if (state.loading) { host.appendChild(el("div", { class: "loading" }, [text("Hämtar recept…")])); return; }
 
-    var list = sortedRecipes(filteredRecipes(state.recipes, state.weekSearch, null));
+    var list = sortedRecipes(state.recipes.filter(function (r) { return state.selected.has(r.id); }));
 
     if (!list.length) {
-      host.appendChild(el("div", { class: "empty" }, [text("Inga recept matchar sökningen.")]));
+      host.appendChild(el("div", { class: "empty" }, [
+        text("Inga recept valda än — gå till Recept-fliken och tryck \"+ Veckoplan\" på det du vill laga.")
+      ]));
     }
 
     list.forEach(function (r) {
-      var on = state.selected.has(r.id);
-      var cb = el("input", { type: "checkbox" });
-      cb.checked = on;
-      cb.addEventListener("change", function () { toggleSelected(r.id); });
-      var card = el("div", { class: "weekcard" + (on ? " on" : ""), onclick: function (e) {
-        if (e.target.tagName === "INPUT") return;
-        toggleSelected(r.id);
-      } }, [
-        cb,
+      var card = el("div", { class: "weekcard on" }, [
         el("div", { class: "body" }, [
           el("h3", {}, [text(r.name)]),
           el("div", { class: "meta", style: "color:var(--text-muted);font-size:0.78rem;" }, [
             text((r.recipe_ingredients || []).length + " ingredienser · " + (r.last_cooked_at ? "senast lagad " + fmtDate(r.last_cooked_at) : "inte lagad än"))
           ])
-        ])
+        ]),
+        el("button", {
+          type: "button", class: "btn small", title: "Ta bort från veckoplanen",
+          onclick: function (e) { e.stopPropagation(); toggleSelected(r.id); }
+        }, [text("✕ Ta bort")])
       ]);
       host.appendChild(card);
     });
@@ -1512,7 +1509,6 @@
   });
   $("#recipeSearch").addEventListener("input", function (e) { state.recipeSearch = e.target.value; renderRecipesPanel(); });
   $("#recipeSort").addEventListener("change", function (e) { state.recipeSort = e.target.value; renderRecipesPanel(); });
-  $("#weekSearch").addEventListener("input", function (e) { state.weekSearch = e.target.value; renderWeekPanel(); });
   $("#resetWeekBtn").addEventListener("click", resetWeekSelection);
   $("#newRecipeBtn").addEventListener("click", openNewModal);
   $("#copyListBtn").addEventListener("click", copyShoppingList);

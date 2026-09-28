@@ -203,11 +203,19 @@
   }
   .shoplist ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
   .shoplist li {
-    display: flex; align-items: baseline; gap: 8px; font-size: 0.92rem; padding: 5px 2px; border-radius: 6px;
+    display: flex; align-items: center; gap: 8px; font-size: 0.92rem; padding: 5px 2px; border-radius: 6px; flex-wrap: wrap;
   }
   .shoplist li input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; flex-shrink: 0; }
   .shoplist li.checked span { text-decoration: line-through; color: var(--text-muted); }
   .shoplist .qty { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-muted); min-width: 3.2em; }
+  .shoplist .shop-name { flex: 1 1 auto; min-width: 0; }
+  .shop-comment {
+    font: inherit; font-size: 0.8rem; font-style: italic; padding: 4px 8px; border-radius: 999px;
+    border: 1px solid transparent; background: transparent; color: var(--text-muted); width: 11em;
+    flex-shrink: 0; text-decoration: none !important;
+  }
+  .shop-comment:hover, .shop-comment:focus { border-color: var(--border); background: var(--surface-2); outline: none; }
+  .shop-comment::placeholder { color: var(--text-muted); opacity: 0.55; }
 
   .modal-backdrop {
     position: fixed; inset: 0; background: rgba(20,24,15,0.45); display: flex; align-items: flex-start;
@@ -365,6 +373,10 @@
     // aldrig till receptet.
     weekServings: {},
     checkedShop: new Set(),
+    // Fritextkommentar per inköpslistevara, t.ex. "från lokala marknaden" —
+    // bara giltig för den här veckoplaneringen, sparas aldrig till receptet.
+    // Nyckel: shopItemKey(item), samma som checkedShop använder.
+    shopComments: {},
     editing: null, // recipe object being edited, or {} for new
     banner: null,
     plans: [],
@@ -849,6 +861,7 @@
     state.selected = new Set();
     state.weekServings = {};
     state.checkedShop = new Set();
+    state.shopComments = {};
     renderWeekPanel();
     showBanner("info", "Valda recept och ikryssade varor är återställda.");
   }
@@ -997,10 +1010,22 @@
           if (checked) state.checkedShop.delete(key); else state.checkedShop.add(key);
           renderShoppingList();
         });
+        // Fritextkommentar per vara, t.ex. "Willys" eller "lokala marknaden"
+        // — uppdaterar bara state direkt (inget renderShoppingList-anrop
+        // här) så man inte tappar fokus i fältet medan man skriver.
+        var commentInput = el("input", {
+          type: "text", class: "shop-comment", placeholder: "Kommentar…",
+          value: state.shopComments[key] || ""
+        });
+        commentInput.addEventListener("input", function () {
+          if (commentInput.value.trim()) state.shopComments[key] = commentInput.value;
+          else delete state.shopComments[key];
+        });
         var li = el("li", { class: checked ? "checked" : "" }, [
           cb,
           el("span", { class: "qty" }, [text(qtyLabel)]),
-          el("span", {}, [text(item.name)])
+          el("span", { class: "shop-name" }, [text(item.name)]),
+          commentInput
         ]);
         ul.appendChild(li);
       });
@@ -1017,7 +1042,8 @@
       lines.push(cat + ":");
       byCat[cat].forEach(function (item) {
         var qty = item.hasAmount ? (Math.round(item.amount * 100) / 100) + (item.unit ? " " + item.unit : " st") + " " : (item.count > 1 ? "×" + item.count + " " : "");
-        lines.push("- " + qty + item.name);
+        var comment = state.shopComments[shopItemKey(item)];
+        lines.push("- " + qty + item.name + (comment ? " (" + comment + ")" : ""));
       });
       lines.push("");
     });
@@ -1040,9 +1066,11 @@
     items.sort(function (a, b) { return a.name.localeCompare(b.name, "sv"); });
     var lines = items.map(function (item) {
       var name = item.name.charAt(0).toUpperCase() + item.name.slice(1);
-      if (!item.hasAmount) return name;
+      var comment = state.shopComments[shopItemKey(item)];
+      var suffix = comment ? " (" + comment + ")" : "";
+      if (!item.hasAmount) return name + suffix;
       var qty = Math.round(item.amount * 100) / 100;
-      return name + " (" + qty + (item.unit ? " " + item.unit : "") + ")";
+      return name + " (" + qty + (item.unit ? " " + item.unit : "") + ")" + suffix;
     });
     var out = lines.join("\n");
     navigator.clipboard.writeText(out).then(function () {

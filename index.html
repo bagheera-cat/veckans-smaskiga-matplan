@@ -1063,6 +1063,9 @@
     var byCat = buildShoppingList();
     var items = [];
     Object.keys(byCat).forEach(function (cat) { items = items.concat(byCat[cat]); });
+    // Överstrukna (redan avbockade) varor ska inte följa med — de är redan
+    // inhandlade eller inte längre aktuella.
+    items = items.filter(function (item) { return !state.checkedShop.has(shopItemKey(item)); });
     items.sort(function (a, b) { return a.name.localeCompare(b.name, "sv"); });
     var lines = items.map(function (item) {
       var name = item.name.charAt(0).toUpperCase() + item.name.slice(1);
@@ -1074,7 +1077,7 @@
     });
     var out = lines.join("\n");
     navigator.clipboard.writeText(out).then(function () {
-      showBanner("info", "Willys-listan kopierad.");
+      showBanner("info", "Willys-listan kopierad. Överstrukna varor kopieras inte.");
     }).catch(function () {
       showBanner("error", "Kunde inte kopiera automatiskt — markera texten manuellt.");
     });

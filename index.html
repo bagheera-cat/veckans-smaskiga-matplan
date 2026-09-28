@@ -833,11 +833,11 @@
   }
 
   // Justerar hur många portioner man tänker laga av ett recept DEN HÄR
-  // veckan, i steg om 2 (aldrig under 1). Utgår från vad som redan är valt,
+  // veckan, i steg om 2 (aldrig under 2). Utgår från vad som redan är valt,
   // eller receptets eget portionstal första gången.
   function adjustWeekServings(id, baseServings, delta) {
     var current = state.weekServings[id] || baseServings;
-    state.weekServings[id] = Math.max(1, current + delta);
+    state.weekServings[id] = Math.max(2, current + delta);
     renderWeekPanel();
   }
 

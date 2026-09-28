@@ -699,6 +699,7 @@
         el("span", {}, [text(ingCount + " ingrediens" + (ingCount === 1 ? "" : "er"))]),
         el("span", {}, [text(r.last_cooked_at ? "Senast lagad " + fmtDate(r.last_cooked_at) : "Inte lagad än")])
       ]);
+      if (r.servings) meta.insertBefore(el("span", {}, [text(r.servings + (r.servings === 1 ? " portion" : " portioner"))]), meta.firstChild);
       var tagsRow = el("div", { class: "tagrow" }, (r.tags || []).map(function (t) {
         return el("span", { class: "tagchip static" }, [text(t)]);
       }));
@@ -1169,6 +1170,7 @@
     var modalChildren = [
       el("h2", {}, [text(r.name)])
     ];
+    if (r.servings) modalChildren.push(el("p", { style: "color:var(--text-muted);font-size:0.85rem;margin-top:-8px;" }, [text(r.servings + (r.servings === 1 ? " portion" : " portioner"))]));
     if (r.image_url) modalChildren.push(el("img", { class: "detail-img", src: r.image_url, alt: r.name }));
     modalChildren.push(tagsRow);
     modalChildren.push(el("div", { class: "detail-cols" }, [
@@ -1227,6 +1229,7 @@
     host.innerHTML = "";
 
     var nameInput = el("input", { type: "text", value: editingRecipe ? editingRecipe.name : "", placeholder: "t.ex. Tacopanna" });
+    var servingsInput = el("input", { type: "text", inputmode: "numeric", value: editingRecipe && editingRecipe.servings ? editingRecipe.servings : "", placeholder: "t.ex. 4" });
     var tagsInput = el("input", { type: "text", value: editingRecipe ? (editingRecipe.tags || []).join(", ") : "", placeholder: "t.ex. vardag, snabb, barnvänlig" });
     var notesInput = el("textarea", { placeholder: "Egna anteckningar, tips…" });
     notesInput.value = editingRecipe ? (editingRecipe.notes || "") : "";
@@ -1355,7 +1358,7 @@
     ingHost.appendChild(addIngBtn);
 
     var saveBtn = el("button", { class: "btn primary", onclick: function () {
-      submitRecipe(editingRecipe, nameInput, tagsInput, notesInput, urlInput, instructionsInput,
+      submitRecipe(editingRecipe, nameInput, servingsInput, tagsInput, notesInput, urlInput, instructionsInput,
         function () { return imageUrlState; },
         function () { return ratingSannaState; },
         function () { return ratingAntonState; });
@@ -1376,6 +1379,9 @@
 
     function applyImportedRecipe(data) {
       if (data.name) nameInput.value = data.name;
+      if (data.servings !== null && data.servings !== undefined && data.servings !== "" && !isNaN(Number(data.servings))) {
+        servingsInput.value = Math.round(Number(data.servings));
+      }
       if (Array.isArray(data.tags) && data.tags.length) tagsInput.value = data.tags.join(", ");
       if (Array.isArray(data.ingredients) && data.ingredients.length) {
         formIngredients = data.ingredients.map(function (i) {
@@ -1432,7 +1438,10 @@
       el("button", { type: "button", class: "modal-close", title: "Stäng", onclick: function () { host.innerHTML = ""; } }, [text("✕")]),
       el("h2", {}, [text(editingRecipe ? "Redigera recept" : "Nytt recept")]),
       importSection,
-      el("div", { class: "field" }, [el("label", {}, [text("Namn")]), nameInput]),
+      el("div", { class: "row2" }, [
+        el("div", { class: "field" }, [el("label", {}, [text("Namn")]), nameInput]),
+        el("div", { class: "field" }, [el("label", {}, [text("Portioner")]), servingsInput])
+      ]),
       imgField,
       ratingField,
       el("div", { class: "field" }, [el("label", {}, [text("Taggar (kommaseparerade)")]), tagsInput]),
@@ -1449,9 +1458,12 @@
     host.appendChild(el("div", { class: "modal-backdrop", onclick: function (e) { if (e.target.classList.contains("modal-backdrop")) host.innerHTML = ""; } }, [modal]));
   }
 
-  function submitRecipe(editingRecipe, nameInput, tagsInput, notesInput, urlInput, instructionsInput, getImageUrl, getRatingSanna, getRatingAnton) {
+  function submitRecipe(editingRecipe, nameInput, servingsInput, tagsInput, notesInput, urlInput, instructionsInput, getImageUrl, getRatingSanna, getRatingAnton) {
     var name = nameInput.value.trim();
     if (!name) { showBanner("error", "Receptet behöver ett namn."); return; }
+    var servingsRaw = servingsInput.value.trim();
+    var servings = servingsRaw ? parseInt(servingsRaw, 10) : null;
+    if (servings !== null && isNaN(servings)) servings = null;
     var tags = tagsInput.value.split(",").map(function (t) { return t.trim(); }).filter(Boolean);
     var cleanedIngredients = formIngredients
       .filter(function (i) { return i.name.trim(); })
@@ -1467,6 +1479,7 @@
 
     var payload = {
       name: name,
+      servings: servings,
       tags: tags,
       notes: notesInput.value.trim() || null,
       source_url: urlInput.value.trim() || null,

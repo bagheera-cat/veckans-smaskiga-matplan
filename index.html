@@ -120,6 +120,7 @@
   }
   .tagchip.on { background: var(--accent); color: var(--accent-ink); }
   .tagchip.static { cursor: default; }
+  .tagchip.deleted { background: var(--surface-2); color: var(--text-muted); text-decoration: line-through; }
 
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
 
@@ -1096,12 +1097,18 @@
   function savePlan() {
     if (!state.selected.size) return;
     var ids = Array.from(state.selected);
+    // Receptnamnen sparas som text tillsammans med id:na, så att historiken
+    // fortfarande kan visa namnet på ett recept även om det senare tas bort.
+    var names = ids.map(function (id) {
+      var r = state.recipes.find(function (x) { return x.id === id; });
+      return r ? r.name : "";
+    });
     var today = new Date().toISOString().slice(0, 10);
     var weekStartField = $("#weekStartInput");
     var weekStart = (weekStartField && weekStartField.value) || state.weekStart;
     var label = weekRangeLabel(weekStart) || ("Vecka från " + fmtDate(weekStart));
 
-    apiFetch("/weekly_plans", { method: "POST", body: { week_start: weekStart, week_label: label, recipe_ids: ids } })
+    apiFetch("/weekly_plans", { method: "POST", body: { week_start: weekStart, week_label: label, recipe_ids: ids, recipe_names: names } })
       .then(function () {
         return apiFetch("/recipes?id=in.(" + ids.join(",") + ")", { method: "PATCH", body: { last_cooked_at: today } });
       })
@@ -1120,6 +1127,19 @@
 
   // ---------- render: history tab ----------
 
+  // Slår ihop en veckoplans recipe_ids med den sparade recipe_names-listan:
+  // ett recept som fortfarande finns kvar länkas till sin receptvy, ett som
+  // tagits bort visas ändå som text om namnet sparades vid tillfället.
+  function planEntries(plan) {
+    var ids = plan.recipe_ids || [];
+    var storedNames = plan.recipe_names || [];
+    return ids.map(function (id, i) {
+      var recipe = state.recipes.find(function (x) { return x.id === id; });
+      var name = recipe ? recipe.name : (storedNames[i] || null);
+      return { id: id, name: name, recipe: recipe || null };
+    }).filter(function (e) { return e.name; });
+  }
+
   function renderHistoryPanel() {
     var host = $("#historyList");
     if (!host) return;
@@ -1134,22 +1154,22 @@
 
     state.plans.forEach(function (plan) {
       var label = weekRangeLabel(plan.week_start) || plan.week_label || (plan.created_at ? "Sparad " + fmtDate(plan.created_at.slice(0, 10)) : "Veckoplan");
-      var planRecipes = (plan.recipe_ids || []).map(function (id) {
-        return state.recipes.find(function (x) { return x.id === id; });
-      }).filter(Boolean);
-      var names = planRecipes.map(function (r) { return r.name; });
-      var missing = (plan.recipe_ids || []).length - names.length;
+      var entries = planEntries(plan);
+      var reusable = entries.some(function (e) { return e.recipe; });
+      var missing = (plan.recipe_ids || []).length - entries.length;
 
       var card = el("div", { class: "card" }, [
         el("h3", {}, [text(label)]),
         el("div", { class: "meta" }, [
-          text(names.length + " rätt" + (names.length === 1 ? "" : "er") + (missing ? " · " + missing + " borttaget recept" + (missing === 1 ? "" : "en") : ""))
+          text(entries.length + " rätt" + (entries.length === 1 ? "" : "er") + (missing ? " · " + missing + " okänt recept" + (missing === 1 ? "" : "a") : ""))
         ]),
-        el("div", { class: "tagrow" }, planRecipes.map(function (r) {
-          return el("button", { class: "tagchip", onclick: function () { openDetailModal(r); } }, [text(r.name)]);
+        el("div", { class: "tagrow" }, entries.map(function (e) {
+          return e.recipe
+            ? el("button", { class: "tagchip", onclick: function () { openDetailModal(e.recipe); } }, [text(e.name)])
+            : el("span", { class: "tagchip static deleted", title: "Receptet är borttaget" }, [text(e.name)]);
         })),
         el("div", { class: "actions" }, [
-          names.length
+          reusable
             ? el("button", { class: "btn small primary", onclick: function () { reusePlan(plan); } }, [text("Återanvänd den här veckan")])
             : el("button", { class: "btn small primary", disabled: "disabled" }, [text("Inga recept kvar")]),
           el("button", { class: "btn small danger", onclick: function () { deletePlan(plan); } }, [text("Ta bort")])

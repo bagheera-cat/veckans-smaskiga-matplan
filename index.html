@@ -259,6 +259,9 @@
   .modal-actions { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; }
   .modal-actions .right { display: flex; gap: 8px; }
 
+  .confirm-modal { max-width: 400px; }
+  .confirm-modal h2 { padding-right: 0; }
+
   .banner {
     border-radius: 10px; padding: 10px 14px; font-size: 0.86rem; display: flex; justify-content: space-between; gap: 10px; align-items: center;
   }
@@ -1492,12 +1495,32 @@
         function () { return ratingAntonState; });
     }
     // Stänger formuläret — men om något ändrats sedan det öppnades (dirty)
-    // frågas man först om ändringarna ska sparas, så att de inte kastas av
-    // misstag genom ett klick på stängkrysset, "Avbryt" eller utanför rutan.
+    // frågas man först om ändringarna ska sparas, i sidans egen modalstil
+    // (window.confirm() ser ut som en systemdialog och matchar inte sidan,
+    // och är dessutom inert i vissa förhandsvisningslägen) — i stället läggs
+    // en liten bekräftelseruta ovanpå formuläret, som fortfarande finns kvar
+    // orört i bakgrunden om man väljer att fortsätta redigera.
     function attemptClose() {
       if (!dirty) { host.innerHTML = ""; return; }
-      var wantsSave = window.confirm("Du har osparade ändringar i receptet. Vill du spara dem innan du stänger?\n\nOK = spara ändringarna. Avbryt = stäng utan att spara.");
-      if (wantsSave) doSave(); else host.innerHTML = "";
+      var overlay = el("div", {
+        class: "modal-backdrop",
+        onclick: function (e) { if (e.target === overlay) overlay.remove(); }
+      }, [
+        el("div", { class: "modal confirm-modal" }, [
+          el("h2", {}, [text("Osparade ändringar")]),
+          el("p", { style: "color:var(--text-muted);font-size:0.9rem;" }, [
+            text("Du har ändrat receptet utan att spara. Vill du spara ändringarna innan du stänger?")
+          ]),
+          el("div", { class: "modal-actions" }, [
+            el("button", { class: "btn", onclick: function () { overlay.remove(); } }, [text("Fortsätt redigera")]),
+            el("div", { class: "right" }, [
+              el("button", { class: "btn danger", onclick: function () { host.innerHTML = ""; } }, [text("Stäng utan att spara")]),
+              el("button", { class: "btn primary", onclick: function () { overlay.remove(); doSave(); } }, [text("Spara")])
+            ])
+          ])
+        ])
+      ]);
+      host.appendChild(overlay);
     }
 
     var saveBtn = el("button", { class: "btn primary", onclick: doSave }, [text(editingRecipe ? "Spara ändringar" : "Spara recept")]);

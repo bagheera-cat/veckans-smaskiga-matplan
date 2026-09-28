@@ -1337,14 +1337,27 @@
     var host = $("#modalRoot");
     host.innerHTML = "";
 
+    // Håller koll på om något i formuläret ändrats sedan det öppnades, så
+    // att man kan varnas innan ändringar går förlorade av misstag (stäng-
+    // kryss, "Avbryt", eller klick utanför modalen) i stället för att de
+    // bara tyst kastas.
+    var dirty = false;
+    function markDirty() { dirty = true; }
+
     var nameInput = el("input", { type: "text", value: editingRecipe ? editingRecipe.name : "", placeholder: "t.ex. Tacopanna" });
+    nameInput.addEventListener("input", markDirty);
     var servingsInput = el("input", { type: "text", inputmode: "numeric", value: editingRecipe && editingRecipe.servings ? editingRecipe.servings : "", placeholder: "t.ex. 4" });
+    servingsInput.addEventListener("input", markDirty);
     var tagsInput = el("input", { type: "text", value: editingRecipe ? (editingRecipe.tags || []).join(", ") : "", placeholder: "t.ex. vardag, snabb, barnvänlig" });
+    tagsInput.addEventListener("input", markDirty);
     var notesInput = el("textarea", { placeholder: "Egna anteckningar, tips…" });
     notesInput.value = editingRecipe ? (editingRecipe.notes || "") : "";
+    notesInput.addEventListener("input", markDirty);
     var instructionsInput = el("textarea", { placeholder: "Steg för steg, t.ex.\n1. Hacka löken…\n2. Fräs i olja…", rows: 6 });
     instructionsInput.value = editingRecipe ? (editingRecipe.instructions || "") : "";
+    instructionsInput.addEventListener("input", markDirty);
     var urlInput = el("input", { type: "text", value: editingRecipe ? (editingRecipe.source_url || "") : "", placeholder: "Länk till recept (valfritt)" });
+    urlInput.addEventListener("input", markDirty);
 
     // ---- Bild på receptet: auto från länk-import, eller manuell uppladdning ----
     var imageUrlState = editingRecipe ? (editingRecipe.image_url || null) : null;
@@ -1370,6 +1383,7 @@
 
     imgRemoveBtn.addEventListener("click", function () {
       imageUrlState = null;
+      markDirty();
       renderImgPreview();
     });
 
@@ -1381,6 +1395,7 @@
       uploadRecipeImage(file)
         .then(function (url) {
           imageUrlState = url;
+          markDirty();
           renderImgPreview();
           imgStatus.textContent = "";
           imgFileInput.disabled = false;
@@ -1410,10 +1425,12 @@
       el("div", { class: "rating" }, [
         renderRatingRow("Sanna", function () { return ratingSannaState; }, function (newVal, redraw) {
           ratingSannaState = newVal;
+          markDirty();
           redraw();
         }),
         renderRatingRow("Anton", function () { return ratingAntonState; }, function (newVal, redraw) {
           ratingAntonState = newVal;
+          markDirty();
           redraw();
         })
       ])
@@ -1434,21 +1451,22 @@
       ingList.innerHTML = "";
       formIngredients.forEach(function (ing) {
         var nameF = el("input", { type: "text", placeholder: "namn", value: ing.name });
-        nameF.addEventListener("input", function () { ing.name = nameF.value; });
+        nameF.addEventListener("input", function () { ing.name = nameF.value; markDirty(); });
         var amtF = el("input", { type: "text", placeholder: "1", value: ing.amount, inputmode: "decimal" });
-        amtF.addEventListener("input", function () { ing.amount = amtF.value; });
+        amtF.addEventListener("input", function () { ing.amount = amtF.value; markDirty(); });
         var unitF = el("input", { type: "text", placeholder: "dl/g/st", value: ing.unit });
-        unitF.addEventListener("input", function () { ing.unit = unitF.value; });
+        unitF.addEventListener("input", function () { ing.unit = unitF.value; markDirty(); });
         var catF = el("select", {}, CATEGORIES.map(function (c) {
           var o = el("option", { value: c }, [text(c)]);
           if (c === ing.category) o.setAttribute("selected", "selected");
           return o;
         }));
-        catF.addEventListener("change", function () { ing.category = catF.value; });
+        catF.addEventListener("change", function () { ing.category = catF.value; markDirty(); });
         var groupF = el("input", { type: "text", placeholder: "t.ex. Aioli", value: ing.group || "" });
-        groupF.addEventListener("input", function () { ing.group = groupF.value; });
+        groupF.addEventListener("input", function () { ing.group = groupF.value; markDirty(); });
         var rmBtn = el("button", { type: "button", title: "Ta bort den här ingrediensen", onclick: function () {
           formIngredients = formIngredients.filter(function (x) { return x._id !== ing._id; });
+          markDirty();
           renderIngList();
         } }, [text("✕ Ta bort")]);
         ingList.appendChild(el("div", { class: "ing-row" }, [nameF, amtF, unitF, catF, groupF, rmBtn]));
@@ -1458,6 +1476,7 @@
 
     var addIngBtn = el("button", { type: "button", class: "btn small", onclick: function () {
       formIngredients.push({ _id: formIdCounter++, name: "", amount: "", unit: "", category: "Övrigt", group: "" });
+      markDirty();
       renderIngList();
     } }, [text("+ Lägg till ingrediens")]);
 
@@ -1466,13 +1485,23 @@
     ingHost.appendChild(ingList);
     ingHost.appendChild(addIngBtn);
 
-    var saveBtn = el("button", { class: "btn primary", onclick: function () {
+    function doSave() {
       submitRecipe(editingRecipe, nameInput, servingsInput, tagsInput, notesInput, urlInput, instructionsInput,
         function () { return imageUrlState; },
         function () { return ratingSannaState; },
         function () { return ratingAntonState; });
-    } }, [text(editingRecipe ? "Spara ändringar" : "Spara recept")]);
-    var cancelBtn = el("button", { class: "btn", onclick: function () { host.innerHTML = ""; } }, [text("Avbryt")]);
+    }
+    // Stänger formuläret — men om något ändrats sedan det öppnades (dirty)
+    // frågas man först om ändringarna ska sparas, så att de inte kastas av
+    // misstag genom ett klick på stängkrysset, "Avbryt" eller utanför rutan.
+    function attemptClose() {
+      if (!dirty) { host.innerHTML = ""; return; }
+      var wantsSave = window.confirm("Du har osparade ändringar i receptet. Vill du spara dem innan du stänger?\n\nOK = spara ändringarna. Avbryt = stäng utan att spara.");
+      if (wantsSave) doSave(); else host.innerHTML = "";
+    }
+
+    var saveBtn = el("button", { class: "btn primary", onclick: doSave }, [text(editingRecipe ? "Spara ändringar" : "Spara recept")]);
+    var cancelBtn = el("button", { class: "btn", onclick: attemptClose }, [text("Avbryt")]);
 
     // ---- AI-import: fyller i formuläret ovan, sparar inget själv ----
     var importUrlInput = el("input", { type: "text", placeholder: "Klistra in en receptlänk…" });
@@ -1514,6 +1543,7 @@
         imageUrlState = data.image_url;
         renderImgPreview();
       }
+      markDirty();
       showBanner("info", "Receptet är tolkat — kontrollera att allt stämmer innan du sparar.");
     }
 
@@ -1544,7 +1574,7 @@
     ]);
 
     var modal = el("div", { class: "modal" }, [
-      el("button", { type: "button", class: "modal-close", title: "Stäng", onclick: function () { host.innerHTML = ""; } }, [text("✕")]),
+      el("button", { type: "button", class: "modal-close", title: "Stäng", onclick: attemptClose }, [text("✕")]),
       el("h2", {}, [text(editingRecipe ? "Redigera recept" : "Nytt recept")]),
       importSection,
       el("div", { class: "row2" }, [
@@ -1564,7 +1594,7 @@
       ])
     ]);
 
-    host.appendChild(el("div", { class: "modal-backdrop", onclick: function (e) { if (e.target.classList.contains("modal-backdrop")) host.innerHTML = ""; } }, [modal]));
+    host.appendChild(el("div", { class: "modal-backdrop", onclick: function (e) { if (e.target.classList.contains("modal-backdrop")) attemptClose(); } }, [modal]));
   }
 
   function submitRecipe(editingRecipe, nameInput, servingsInput, tagsInput, notesInput, urlInput, instructionsInput, getImageUrl, getRatingSanna, getRatingAnton) {

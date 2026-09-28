@@ -957,11 +957,15 @@
           amount = disp.amount;
           displayUnit = disp.unit;
         } else if (hasAmount) {
+          // OBS: rundas INTE upp till närmaste hela enhet här, även för
+          // styckenheter (st, förpackning, klyfta, näve) — en tidigare
+          // version gjorde det, men det gömde själva poängen med att skala
+          // portioner: t.ex. "0.5 st isbergssallad" som skalas till 6 eller
+          // 8 portioner visade "1" i båda fallen (avrundat före summering av
+          // skillnaden), så listan såg "fastfrusen" ut fast talet faktiskt
+          // ändrats. Visar nu det exakta skalade talet (t.ex. "0.75 st")
+          // och låter användaren själv runda av vid handling.
           amount = roundNice(amount);
-          // Styckenheter (st, förpackning, klyfta, näve m.fl.) går inte att
-          // handla i decimaltal — särskilt efter en portionsskalning (t.ex.
-          // 1.5 lök) rundas de uppåt till närmaste hela enhet.
-          if (!sub.family) amount = Math.ceil(amount - 1e-9);
         }
         map[nameKey + "|" + subKey] = {
           name: group.name, unit: displayUnit, amount: amount, hasAmount: hasAmount,

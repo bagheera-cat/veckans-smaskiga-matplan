@@ -515,56 +515,116 @@
     });
   }
 
-  // Downscales an uploaded screenshot before sending it, to keep the AI call
-  // fast and cheap — a full-resolution phone photo is overkill for reading
-  // ingredient text.
-  function resizeImageToBase64(file, maxDim) {
+  // Läser EXIF-orienteringen (tagg 0x0112) ur en JPEG-fil, om sådan finns.
+  // En del mobilkameror sparar en liggande bild som "stående" rå pixeldata
+  // plus en EXIF-tagg som säger hur den ska roteras vid visning. Att bara
+  // rita av bilden på en <canvas> utan att själv applicera den roteringen
+  // kan (beroende på webbläsare/version) ge en sidvriden bild i utdatan —
+  // vilket i sin tur gjorde att AI:n inte kunde läsa texten och i stället
+  // hittade på ett recept som inte alls stämde med bilden. Returnerar 1
+  // (ingen rotering) om filen saknar EXIF eller inte är en JPEG.
+  function readExifOrientation(arrayBuffer) {
+    try {
+      var view = new DataView(arrayBuffer);
+      if (view.getUint16(0, false) !== 0xFFD8) return 1;
+      var length = view.byteLength, offset = 2;
+      while (offset < length - 1) {
+        var marker = view.getUint16(offset, false);
+        offset += 2;
+        if (marker === 0xFFE1) {
+          if (view.getUint32(offset + 2, false) !== 0x45786966) return 1; // "Exif"
+          var little = view.getUint16(offset + 8, false) === 0x4949;
+          var tiffOffset = offset + 8;
+          var dirOffset = tiffOffset + view.getUint32(tiffOffset + 4, little);
+          var entries = view.getUint16(dirOffset, little);
+          for (var i = 0; i < entries; i++) {
+            var entryOffset = dirOffset + 2 + i * 12;
+            if (view.getUint16(entryOffset, little) === 0x0112) {
+              return view.getUint16(entryOffset + 8, little);
+            }
+          }
+          return 1;
+        } else if ((marker & 0xFF00) !== 0xFF00) {
+          break;
+        } else {
+          offset += view.getUint16(offset, false);
+        }
+      }
+    } catch (e) { /* okänt/skadat format — anta ingen rotering */ }
+    return 1;
+  }
+
+  // Ritar av en <img> på en <canvas>, nedskalad och roterad enligt EXIF-
+  // orienteringen ovan, så resultatet alltid blir rättvänt oavsett vad
+  // ursprungsfilens metadata säger eller hur webbläsaren annars skulle
+  // ha tolkat den.
+  function drawOrientedCanvas(img, orientation, maxDim) {
+    var scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+    var w = Math.max(1, Math.round(img.width * scale));
+    var h = Math.max(1, Math.round(img.height * scale));
+    var swapped = orientation >= 5 && orientation <= 8;
+    var canvas = document.createElement("canvas");
+    canvas.width = swapped ? h : w;
+    canvas.height = swapped ? w : h;
+    var ctx = canvas.getContext("2d");
+    switch (orientation) {
+      case 2: ctx.transform(-1, 0, 0, 1, w, 0); break;
+      case 3: ctx.transform(-1, 0, 0, -1, w, h); break;
+      case 4: ctx.transform(1, 0, 0, -1, 0, h); break;
+      case 5: ctx.transform(0, 1, 1, 0, 0, 0); break;
+      case 6: ctx.transform(0, 1, -1, 0, h, 0); break;
+      case 7: ctx.transform(0, -1, -1, 0, h, w); break;
+      case 8: ctx.transform(0, -1, 1, 0, 0, w); break;
+      default: break;
+    }
+    ctx.drawImage(img, 0, 0, w, h);
+    return canvas;
+  }
+
+  // Läser in en fil, tar reda på dess EXIF-orientering och laddar den som en
+  // rättvänd <img> redo att ritas av — delad av resizeImageToBase64 och
+  // resizeImageToBlob nedan.
+  function loadOrientedImage(file) {
     return new Promise(function (resolve, reject) {
       var reader = new FileReader();
       reader.onload = function () {
+        var arrayBuffer = reader.result;
+        var orientation = readExifOrientation(arrayBuffer);
+        var url = URL.createObjectURL(new Blob([arrayBuffer]));
         var img = new Image();
-        img.onload = function () {
-          var scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-          var w = Math.max(1, Math.round(img.width * scale));
-          var h = Math.max(1, Math.round(img.height * scale));
-          var canvas = document.createElement("canvas");
-          canvas.width = w; canvas.height = h;
-          canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-          var dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-          resolve({ base64: dataUrl.split(",")[1], mediaType: "image/jpeg" });
-        };
-        img.onerror = function () { reject(new Error("Kunde inte läsa bilden.")); };
-        img.src = reader.result;
+        img.onload = function () { resolve({ img: img, orientation: orientation, url: url }); };
+        img.onerror = function () { URL.revokeObjectURL(url); reject(new Error("Kunde inte läsa bilden.")); };
+        img.src = url;
       };
       reader.onerror = function () { reject(new Error("Kunde inte läsa filen.")); };
-      reader.readAsDataURL(file);
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  // Downscales an uploaded screenshot/foto innan den skickas till AI:n, för
+  // ett snabbare och billigare anrop — men inte hårdare nedskalat än att
+  // texten i receptet fortfarande går att läsa.
+  function resizeImageToBase64(file, maxDim) {
+    return loadOrientedImage(file).then(function (r) {
+      var canvas = drawOrientedCanvas(r.img, r.orientation, maxDim);
+      URL.revokeObjectURL(r.url);
+      var dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+      return { base64: dataUrl.split(",")[1], mediaType: "image/jpeg" };
     });
   }
 
   // Samma nedskalning som ovan, men som en Blob (för uppladdning till
-  // Supabase Storage) i stället för en base64-sträng (för AI-anropet).
+  // Supabase Storage) i stället för en base64-sträng.
   function resizeImageToBlob(file, maxDim, quality) {
-    return new Promise(function (resolve, reject) {
-      var reader = new FileReader();
-      reader.onload = function () {
-        var img = new Image();
-        img.onload = function () {
-          var scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-          var w = Math.max(1, Math.round(img.width * scale));
-          var h = Math.max(1, Math.round(img.height * scale));
-          var canvas = document.createElement("canvas");
-          canvas.width = w; canvas.height = h;
-          canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-          canvas.toBlob(function (blob) {
-            if (!blob) { reject(new Error("Kunde inte bearbeta bilden.")); return; }
-            resolve(blob);
-          }, "image/jpeg", quality || 0.85);
-        };
-        img.onerror = function () { reject(new Error("Kunde inte läsa bilden.")); };
-        img.src = reader.result;
-      };
-      reader.onerror = function () { reject(new Error("Kunde inte läsa filen.")); };
-      reader.readAsDataURL(file);
+    return loadOrientedImage(file).then(function (r) {
+      var canvas = drawOrientedCanvas(r.img, r.orientation, maxDim);
+      URL.revokeObjectURL(r.url);
+      return new Promise(function (resolve, reject) {
+        canvas.toBlob(function (blob) {
+          if (!blob) { reject(new Error("Kunde inte bearbeta bilden.")); return; }
+          resolve(blob);
+        }, "image/jpeg", quality || 0.85);
+      });
     });
   }
 
@@ -1751,7 +1811,11 @@
       var file = importFileInput.files && importFileInput.files[0];
       if (!file) return;
       setImportBusy(true, "Läser skärmdumpen…");
-      resizeImageToBase64(file, 1400)
+      // Höjt från 1400: ett foto av en kokboksida med tät, liten text (t.ex.
+      // tagen på snedden eller av en böjd sida) behöver högre upplösning
+      // för att AI:n ska kunna läsa av texten korrekt i stället för att
+      // hitta på ett recept som ser rimligt ut men inte stämmer.
+      resizeImageToBase64(file, 1800)
         .then(function (img) { return callImportFunction({ image: img.base64, mediaType: img.mediaType }); })
         .then(function (data) { setImportBusy(false); applyImportedRecipe(data); importFileInput.value = ""; })
         .catch(function (err) { setImportBusy(false); showBanner("error", "Kunde inte tolka bilden. " + err.message); importFileInput.value = ""; });

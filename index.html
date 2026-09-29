@@ -882,7 +882,7 @@
   // omvandling ska ske "i onödan" (t.ex. 300 g + 300 g ska förbli 600 g, inte
   // bli omgjort till 0.6 kg). Vikt och volym är varsin "familj" som kan
   // räknas om mot en gemensam basenhet (gram/milliliter). Styckenheter
-  // (st, förpackning, klyfta, näve) går inte att räkna om mellan varandra,
+  // (st, förp, klyfta, näve) går inte att räkna om mellan varandra,
   // så de slås bara ihop när enheten är exakt densamma.
   var UNIT_TO_BASE = {
     weight: { g: 1, kg: 1000 },
@@ -965,7 +965,7 @@
           displayUnit = disp.unit;
         } else if (hasAmount) {
           // OBS: rundas INTE upp till närmaste hela enhet här, även för
-          // styckenheter (st, förpackning, klyfta, näve) — en tidigare
+          // styckenheter (st, förp, klyfta, näve) — en tidigare
           // version gjorde det, men det gömde själva poängen med att skala
           // portioner: t.ex. "0.5 st isbergssallad" som skalas till 6 eller
           // 8 portioner visade "1" i båda fallen (avrundat före summering av

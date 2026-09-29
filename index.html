@@ -263,6 +263,11 @@
 
   .confirm-modal { max-width: 400px; }
   .confirm-modal h2 { padding-right: 0; }
+
+  .saved-shoplist {
+    white-space: pre-wrap; font-size: 0.88rem; line-height: 1.55; max-height: 55vh; overflow-y: auto;
+    background: var(--surface-2); border-radius: 10px; padding: 12px 14px; margin: 0;
+  }
   .confirm-modal .modal-actions { flex-direction: column; align-items: stretch; }
   .confirm-modal .modal-actions .right { flex-direction: column; align-items: stretch; }
   .confirm-modal .modal-actions .btn { width: 100%; text-align: center; }
@@ -1070,8 +1075,10 @@
     host.appendChild(container);
   }
 
-  function copyShoppingList() {
-    var byCat = buildShoppingList();
+  // Bygger inköpslistan som text, grupperad per kategori — används både av
+  // "Kopiera lista"-knappen och för att spara en ögonblicksbild av listan
+  // i veckoplanens historik (se savePlan).
+  function shoppingListText(byCat) {
     var cats = CATEGORIES.filter(function (c) { return byCat[c]; });
     var lines = [];
     cats.forEach(function (cat) {
@@ -1083,7 +1090,11 @@
       });
       lines.push("");
     });
-    var out = lines.join("\n").trim();
+    return lines.join("\n").trim();
+  }
+
+  function copyShoppingList() {
+    var out = shoppingListText(buildShoppingList());
     navigator.clipboard.writeText(out).then(function () {
       showBanner("info", "Inköpslistan kopierad.");
     }).catch(function () {
@@ -1128,12 +1139,17 @@
       var r = state.recipes.find(function (x) { return x.id === id; });
       return r ? r.name : "";
     });
+    // Inköpslistan sparas också som text, i sitt skick just nu (med
+    // eventuella portionsjusteringar och kommentarer) — så man i historiken
+    // kan se exakt vad som handlades den veckan, även efter att recept
+    // ändrats, tagits bort eller kryssen i inköpslistan nollställts.
+    var shoppingList = shoppingListText(buildShoppingList());
     var today = new Date().toISOString().slice(0, 10);
     var weekStartField = $("#weekStartInput");
     var weekStart = (weekStartField && weekStartField.value) || state.weekStart;
     var label = weekRangeLabel(weekStart) || ("Vecka från " + fmtDate(weekStart));
 
-    apiFetch("/weekly_plans", { method: "POST", body: { week_start: weekStart, week_label: label, recipe_ids: ids, recipe_names: names } })
+    apiFetch("/weekly_plans", { method: "POST", body: { week_start: weekStart, week_label: label, recipe_ids: ids, recipe_names: names, shopping_list: shoppingList } })
       .then(function () {
         return apiFetch("/recipes?id=in.(" + ids.join(",") + ")", { method: "PATCH", body: { last_cooked_at: today } });
       })
@@ -1197,11 +1213,40 @@
           reusable
             ? el("button", { class: "btn small primary", onclick: function () { reusePlan(plan); } }, [text("Återanvänd den här veckan")])
             : el("button", { class: "btn small primary", disabled: "disabled" }, [text("Inga recept kvar")]),
+          plan.shopping_list
+            ? el("button", { class: "btn small", onclick: function () { openShoppingListModal(plan, label); } }, [text("Inköpslista")])
+            : el("button", { class: "btn small", disabled: "disabled", title: "Ingen inköpslista sparad för den här veckoplanen" }, [text("Inköpslista")]),
           el("button", { class: "btn small danger", onclick: function () { deletePlan(plan); } }, [text("Ta bort")])
         ])
       ]);
       host.appendChild(card);
     });
+  }
+
+  // Visar den inköpslista som sparades tillsammans med veckoplanen (en
+  // ögonblicksbild av läget vid det tillfället, se savePlan), med en
+  // "Kopiera"-knapp — samma text som "Kopiera lista" ger just nu.
+  function openShoppingListModal(plan, label) {
+    var host = $("#modalRoot");
+    host.innerHTML = "";
+    host.appendChild(el("div", { class: "modal-backdrop", onclick: function (e) { if (e.target === host.firstChild) host.innerHTML = ""; } }, [
+      el("div", { class: "modal" }, [
+        el("h2", {}, [text("Inköpslista — " + label)]),
+        el("pre", { class: "saved-shoplist" }, [text(plan.shopping_list)]),
+        el("div", { class: "modal-actions" }, [
+          el("button", { class: "btn", onclick: function () { host.innerHTML = ""; } }, [text("Stäng")]),
+          el("button", {
+            class: "btn primary", onclick: function () {
+              navigator.clipboard.writeText(plan.shopping_list).then(function () {
+                showBanner("info", "Inköpslistan kopierad.");
+              }).catch(function () {
+                showBanner("error", "Kunde inte kopiera automatiskt — markera texten manuellt.");
+              });
+            }
+          }, [text("Kopiera")])
+        ])
+      ])
+    ]));
   }
 
   function reusePlan(plan) {

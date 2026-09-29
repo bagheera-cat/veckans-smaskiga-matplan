@@ -216,7 +216,8 @@
     flex-shrink: 0; text-decoration: none !important; transition: width 0.15s ease;
   }
   .shop-comment:hover { border-style: solid; }
-  .shop-comment:focus { border-style: solid; border-color: var(--accent); background: var(--surface); outline: none; width: 8em; }
+  .shop-comment:focus, .shop-comment.filled { width: 8em; }
+  .shop-comment:focus { border-style: solid; border-color: var(--accent); background: var(--surface); outline: none; }
   .shop-comment::placeholder { color: var(--text-muted); opacity: 0.7; }
 
   .modal-backdrop {
@@ -1027,10 +1028,14 @@
         // här) så man inte tappar fokus i fältet medan man skriver. Inget
         // platshållartext i själva fältet (se rubrikraden ovan) så listan
         // inte känns full av "Kommentar…" när inget är ifyllt.
-        var commentInput = el("input", { type: "text", class: "shop-comment", value: state.shopComments[key] || "" });
+        var hasComment = !!(state.shopComments[key] || "").trim();
+        var commentInput = el("input", { type: "text", class: "shop-comment" + (hasComment ? " filled" : ""), value: state.shopComments[key] || "" });
         commentInput.addEventListener("input", function () {
           if (commentInput.value.trim()) state.shopComments[key] = commentInput.value;
           else delete state.shopComments[key];
+          // Behåll fältet i sin bredare bredd så länge något är skrivet, så
+          // det inte krymper tillbaka och gör texten svårläst.
+          commentInput.classList.toggle("filled", !!commentInput.value.trim());
         });
         var li = el("li", { class: checked ? "checked" : "" }, [
           cb,

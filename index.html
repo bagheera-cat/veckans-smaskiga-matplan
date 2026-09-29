@@ -1311,6 +1311,29 @@
     showBanner("info", "Recepten är valda igen. Sätt veckostart och spara för att lägga till en ny post i historiken.");
   }
 
+  // Räknar om "senast lagad"-datumet för recepten i en borttagen veckoplan,
+  // så att det inte blir kvar felaktigt efter att planen som satte det tagits
+  // bort. Utgår från de veckoplaner som fortfarande finns kvar (efter
+  // borttagningen): om receptet finns med i någon av dem sätts datumet till
+  // den senaste av dem (dess created_at-datum, som är samma dag planen
+  // sparades — se doSavePlan), annars nollställs det helt.
+  function recalcLastCooked(recipeIds) {
+    var updates = [];
+    recipeIds.forEach(function (id) {
+      var stillPlanned = state.plans.filter(function (p) { return (p.recipe_ids || []).indexOf(id) !== -1; });
+      var dates = stillPlanned.map(function (p) { return (p.created_at || "").slice(0, 10); }).filter(Boolean).sort();
+      var newDate = dates.length ? dates[dates.length - 1] : null;
+      var recipe = state.recipes.find(function (r) { return r.id === id; });
+      if (recipe && recipe.last_cooked_at !== newDate) {
+        updates.push(
+          apiFetch("/recipes?id=eq." + id, { method: "PATCH", body: { last_cooked_at: newDate } })
+            .then(function () { recipe.last_cooked_at = newDate; })
+        );
+      }
+    });
+    return Promise.all(updates);
+  }
+
   function deletePlan(plan) {
     var host = $("#modalRoot");
     host.innerHTML = "";
@@ -1318,7 +1341,7 @@
     host.appendChild(el("div", { class: "modal-backdrop", onclick: function (e) { if (e.target === host.firstChild) host.innerHTML = ""; } }, [
       el("div", { class: "modal" }, [
         el("h2", {}, [text("Ta bort " + label + "?")]),
-        el("p", { style: "color:var(--text-muted);font-size:0.9rem;" }, [text("Det går inte att ångra. Själva recepten påverkas inte.")]),
+        el("p", { style: "color:var(--text-muted);font-size:0.9rem;" }, [text("Det går inte att ångra. Själva recepten tas inte bort, men \"senast lagad\"-datumet räknas om om det här var deras senaste tillfälle.")]),
         el("div", { class: "modal-actions" }, [
           el("button", { class: "btn", onclick: function () { host.innerHTML = ""; } }, [text("Avbryt")]),
           el("button", {
@@ -1326,6 +1349,9 @@
               apiFetch("/weekly_plans?id=eq." + plan.id, { method: "DELETE" })
                 .then(function () {
                   state.plans = state.plans.filter(function (p) { return p.id !== plan.id; });
+                  return recalcLastCooked(plan.recipe_ids || []);
+                })
+                .then(function () {
                   host.innerHTML = "";
                   render();
                 })

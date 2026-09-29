@@ -840,10 +840,30 @@
     renderShoppingList();
   }
 
+  // Städar bort ikryssning/kommentar för inköpslistevaror som inte längre
+  // finns kvar i den sammanslagna listan — t.ex. efter att ett recept med
+  // den ingrediensen tagits bort från veckoplanen. Om en annan kvarvarande
+  // recept fortfarande bidrar med samma (sammanslagna) vara ligger den kvar
+  // i listan med samma nyckel, och kryss/kommentar rörs då inte.
+  function pruneShopState() {
+    var byCat = buildShoppingList();
+    var validKeys = {};
+    Object.keys(byCat).forEach(function (cat) {
+      byCat[cat].forEach(function (item) { validKeys[shopItemKey(item)] = true; });
+    });
+    Array.from(state.checkedShop).forEach(function (k) {
+      if (!validKeys[k]) state.checkedShop.delete(k);
+    });
+    Object.keys(state.shopComments).forEach(function (k) {
+      if (!validKeys[k]) delete state.shopComments[k];
+    });
+  }
+
   function toggleSelected(id) {
     if (state.selected.has(id)) {
       state.selected.delete(id);
       delete state.weekServings[id];
+      pruneShopState();
     } else {
       state.selected.add(id);
     }

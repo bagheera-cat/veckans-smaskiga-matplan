@@ -1130,9 +1130,52 @@
     });
   }
 
+  // Hittar en redan sparad veckoplan med exakt samma veckostart och exakt
+  // samma uppsättning recept (oavsett ordning) — ett tecken på att man
+  // håller på att spara samma veckoplan en gång till av misstag.
+  function findDuplicatePlan(weekStart, ids) {
+    var sortedIds = ids.slice().sort();
+    return state.plans.find(function (p) {
+      if (p.week_start !== weekStart) return false;
+      var pIds = (p.recipe_ids || []).slice().sort();
+      if (pIds.length !== sortedIds.length) return false;
+      return pIds.every(function (id, i) { return id === sortedIds[i]; });
+    });
+  }
+
   function savePlan() {
     if (!state.selected.size) return;
     var ids = Array.from(state.selected);
+    var weekStartField = $("#weekStartInput");
+    var weekStart = (weekStartField && weekStartField.value) || state.weekStart;
+
+    if (findDuplicatePlan(weekStart, ids)) {
+      confirmDuplicateSave(weekStart, ids);
+      return;
+    }
+    doSavePlan(weekStart, ids);
+  }
+
+  // Varnar innan man sparar en veckoplan som ser ut att redan finnas i
+  // historiken (samma vecka + samma recept), i sidans egen modalstil.
+  function confirmDuplicateSave(weekStart, ids) {
+    var host = $("#modalRoot");
+    host.innerHTML = "";
+    host.appendChild(el("div", { class: "modal-backdrop", onclick: function (e) { if (e.target === host.firstChild) host.innerHTML = ""; } }, [
+      el("div", { class: "modal confirm-modal" }, [
+        el("h2", {}, [text("Redan sparad?")]),
+        el("p", { style: "color:var(--text-muted);font-size:0.9rem;" }, [
+          text("Den här veckoplanen — samma vecka och samma recept — verkar redan finnas sparad i historiken. Vill du spara den igen ändå?")
+        ]),
+        el("div", { class: "modal-actions" }, [
+          el("button", { class: "btn", onclick: function () { host.innerHTML = ""; } }, [text("Avbryt")]),
+          el("button", { class: "btn primary", onclick: function () { host.innerHTML = ""; doSavePlan(weekStart, ids); } }, [text("Spara ändå")])
+        ])
+      ])
+    ]));
+  }
+
+  function doSavePlan(weekStart, ids) {
     // Receptnamnen sparas som text tillsammans med id:na, så att historiken
     // fortfarande kan visa namnet på ett recept även om det senare tas bort.
     var names = ids.map(function (id) {
@@ -1145,8 +1188,6 @@
     // ändrats, tagits bort eller kryssen i inköpslistan nollställts.
     var shoppingList = shoppingListText(buildShoppingList());
     var today = new Date().toISOString().slice(0, 10);
-    var weekStartField = $("#weekStartInput");
-    var weekStart = (weekStartField && weekStartField.value) || state.weekStart;
     var label = weekRangeLabel(weekStart) || ("Vecka från " + fmtDate(weekStart));
 
     apiFetch("/weekly_plans", { method: "POST", body: { week_start: weekStart, week_label: label, recipe_ids: ids, recipe_names: names, shopping_list: shoppingList } })
@@ -1160,9 +1201,16 @@
       .then(function () {
         showBanner("info", "Veckoplanen sparad i historiken. \"Senast lagad\" är uppdaterad.");
         render();
+        // Meddelandet visas högst upp på sidan — rullar dit så man faktiskt
+        // ser att sparningen gick igenom, i stället för att bara riskera
+        // att missa det och trycka Spara igen.
+        var bannerHost = $("#banners");
+        if (bannerHost) bannerHost.scrollIntoView({ behavior: "smooth", block: "start" });
       })
       .catch(function (err) {
         showBanner("error", "Kunde inte spara veckoplanen. " + err.message);
+        var bannerHost = $("#banners");
+        if (bannerHost) bannerHost.scrollIntoView({ behavior: "smooth", block: "start" });
       });
   }
 

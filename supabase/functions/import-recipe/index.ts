@@ -143,7 +143,12 @@ Deno.serve(async (req) => {
       // Görs i bakgrunden medan sidtexten skickas till AI:n, så vi inte
       // lägger till extra väntetid för det vanliga fallet.
       var imageOkPromise = imageUrl ? isReasonableImageSize(imageUrl) : Promise.resolve(false);
-      var pageText = stripHtml(html).slice(0, 18000);
+      // 18000 tecken visade sig för snålt för sidor med mycket text innan
+      // själva receptet (meny, kakbanner, "andra läser"-listor osv.) eller
+      // recept med flera delar (t.ex. huvudrätt + tillbehörssallad) — då
+      // riskerade slutet av receptet (instruktionerna) att klippas bort
+      // innan det ens nådde AI:n.
+      var pageText = stripHtml(html).slice(0, 28000);
       if (!pageText) throw new Error("Sidan verkar sakna textinnehåll.");
       content = [{ type: "text", text: PROMPT + "\n\nHär är sidans textinnehåll:\n\n" + pageText }];
     } else {
@@ -159,7 +164,11 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
-        max_tokens: 2000,
+        // Höjt från 2000: recept med flera delar (t.ex. huvudrätt + en egen
+        // tillbehörssallad, vardera med sin ingredienslista och sina steg)
+        // gav ett svar som klipptes av mitt i JSON:en, vilket gjorde att
+        // den inte gick att tolka alls.
+        max_tokens: 4000,
         messages: [{ role: "user", content: content }]
       })
     });
@@ -171,6 +180,12 @@ Deno.serve(async (req) => {
 
     var aiData = await aiRes.json();
     var rawText = (aiData.content && aiData.content[0] && aiData.content[0].text) || "";
+    // Om svaret klipptes av (för stort recept, t.ex. flera delar med många
+    // ingredienser och steg) blir rawText ogiltig/ofullständig JSON — ge ett
+    // begripligt felmeddelande i stället för den kryptiska JSON-parsningen.
+    if (aiData.stop_reason === "max_tokens") {
+      throw new Error("Receptet är för stort/komplext för att tolkas i ett svep (för många ingredienser eller steg). Pröva att lägga in det manuellt, eller dela upp det i flera recept.");
+    }
     var parsed = extractJson(rawText);
     // Bara satt för länk-importen (se ovan) — en uppladdad egen bild av
     // receptet ska aldrig automatiskt bli receptets bild. Sätts inte heller

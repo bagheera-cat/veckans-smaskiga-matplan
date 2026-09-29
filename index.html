@@ -211,12 +211,12 @@
   .shoplist .qty { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-muted); min-width: 3.2em; }
   .shoplist .shop-name { flex: 1 1 auto; min-width: 0; }
   .shop-comment {
-    font: inherit; font-size: 0.8rem; padding: 4px 10px; border-radius: 999px;
-    border: 1px dashed var(--border); background: var(--surface-2); color: var(--text); width: 9.5em;
-    flex-shrink: 0; text-decoration: none !important;
+    font: inherit; font-size: 0.8rem; padding: 4px 8px; border-radius: 999px;
+    border: 1px dashed var(--border); background: var(--surface-2); color: var(--text); width: 4em;
+    flex-shrink: 0; text-decoration: none !important; transition: width 0.15s ease;
   }
   .shop-comment:hover { border-style: solid; }
-  .shop-comment:focus { border-style: solid; border-color: var(--accent); background: var(--surface); outline: none; }
+  .shop-comment:focus { border-style: solid; border-color: var(--accent); background: var(--surface); outline: none; width: 8em; }
   .shop-comment::placeholder { color: var(--text-muted); opacity: 0.7; }
 
   .modal-backdrop {

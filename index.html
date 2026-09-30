@@ -266,6 +266,12 @@
     cursor: pointer; font-size: 0.78rem; padding: 7px 8px; white-space: nowrap;
   }
   .ing-head { display: grid; grid-template-columns: 1.4fr 0.6fr 0.7fr 1fr 0.9fr auto; gap: 6px; font-size: 0.72rem; color: var(--text-muted); font-weight: 600; }
+  /* På bred skärm ska .ing-field "försvinna" som eget lager, så dess input
+     blir den faktiska rutnätscellen (precis som innan fälten fick en egen
+     omslagsdiv) — och rubriken hålls dold eftersom .ing-head redan märker
+     upp kolumnerna ovanför. */
+  .ing-field { display: contents; }
+  .ing-field-label { display: none; }
 
   .modal-actions { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; }
   .modal-actions .right { display: flex; gap: 8px; }
@@ -302,6 +308,10 @@
       border: 1px solid var(--border); border-radius: 7px; margin-top: 2px;
     }
     .ing-head { display: none; }
+    /* Kolumnrubrikerna (.ing-head) är dolda här, så varje fält får i
+       stället en egen rubrik till vänster om sig. */
+    .ing-field { display: flex; align-items: center; gap: 8px; }
+    .ing-field-label { display: block; width: 4.6em; flex-shrink: 0; font-size: 0.72rem; color: var(--text-muted); font-weight: 600; }
   }
 </style>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1644,6 +1654,17 @@
     ]);
     var ingList = el("div", { style: "display:flex;flex-direction:column;gap:10px;" }, []);
 
+    // Radar upp ett fält med en egen rubrik till vänster om det — rubriken
+    // är osynlig på bred skärm (där .ing-head redan märker upp kolumnerna
+    // ovanför), men syns på mobil där raden staplas och kolumnrubrikerna
+    // döljs, så man annars inte ser vilket fält som är vad efter ifyllt.
+    function labeledIngField(labelText, fieldEl) {
+      return el("div", { class: "ing-field" }, [
+        el("span", { class: "ing-field-label" }, [text(labelText)]),
+        fieldEl
+      ]);
+    }
+
     function renderIngList() {
       ingList.innerHTML = "";
       formIngredients.forEach(function (ing) {
@@ -1666,7 +1687,14 @@
           markDirty();
           renderIngList();
         } }, [text("✕ Ta bort")]);
-        ingList.appendChild(el("div", { class: "ing-row" }, [nameF, amtF, unitF, catF, groupF, rmBtn]));
+        ingList.appendChild(el("div", { class: "ing-row" }, [
+          labeledIngField("Ingrediens", nameF),
+          labeledIngField("Mängd", amtF),
+          labeledIngField("Enhet", unitF),
+          labeledIngField("Kategori", catF),
+          labeledIngField("Del", groupF),
+          rmBtn
+        ]));
       });
     }
     renderIngList();

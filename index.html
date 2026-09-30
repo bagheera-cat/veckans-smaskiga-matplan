@@ -1668,11 +1668,11 @@
     function renderIngList() {
       ingList.innerHTML = "";
       formIngredients.forEach(function (ing) {
-        var nameF = el("input", { type: "text", placeholder: "namn", value: ing.name });
+        var nameF = el("input", { type: "text", value: ing.name });
         nameF.addEventListener("input", function () { ing.name = nameF.value; markDirty(); });
-        var amtF = el("input", { type: "text", placeholder: "1", value: ing.amount, inputmode: "decimal" });
+        var amtF = el("input", { type: "text", value: ing.amount, inputmode: "decimal" });
         amtF.addEventListener("input", function () { ing.amount = amtF.value; markDirty(); });
-        var unitF = el("input", { type: "text", placeholder: "dl/g/st", value: ing.unit });
+        var unitF = el("input", { type: "text", placeholder: "t.ex. dl/g/st", value: ing.unit });
         unitF.addEventListener("input", function () { ing.unit = unitF.value; markDirty(); });
         var catF = el("select", {}, CATEGORIES.map(function (c) {
           var o = el("option", { value: c }, [text(c)]);

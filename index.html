@@ -209,7 +209,12 @@
   .shoplist li input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; flex-shrink: 0; }
   .shoplist li.checked span { text-decoration: line-through; color: var(--text-muted); }
   .shoplist .qty { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-muted); min-width: 3.2em; }
-  .shoplist .shop-name { flex: 1 1 auto; min-width: 0; }
+  /* Namnet sträcker sig INTE längre ut för att fylla hela radens bredd —
+     på breda skärmar (dator) hamnade kommentarsfältet då långt ifrån sin
+     ingrediens, ute vid radens högerkant, vilket gjorde det otydligt vilken
+     kommentar som hörde till vilken vara. Fältet ligger nu istället precis
+     intill namnet, oavsett hur bred raden är. */
+  .shoplist .shop-name { flex: 0 1 auto; min-width: 0; }
   .shop-comment {
     font: inherit; font-size: 0.8rem; padding: 4px 8px; border-radius: 999px;
     border: 1px dashed var(--border); background: var(--surface-2); color: var(--text); width: 4em;

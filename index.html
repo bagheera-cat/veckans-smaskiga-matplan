@@ -74,9 +74,15 @@
 
   .wrap { max-width: 880px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
 
-  header.top { display: flex; flex-direction: column; gap: 4px; }
+  header.top { display: flex; flex-direction: row; align-items: flex-start; justify-content: space-between; gap: 10px; }
   header.top h1 { font-size: 1.9rem; font-weight: 600; letter-spacing: -0.01em; }
   header.top p { margin: 0; color: var(--text-muted); font-size: 0.92rem; }
+  .icon-btn {
+    background: none; border: 1px solid var(--border); border-radius: 10px; width: 38px; height: 38px;
+    display: flex; align-items: center; justify-content: center; font-size: 1.05rem; line-height: 1;
+    cursor: pointer; color: var(--text-muted); flex-shrink: 0;
+  }
+  .icon-btn:hover { border-color: var(--accent); color: var(--text); }
 
   nav.tabs {
     display: flex; gap: 4px; background: var(--surface-2); padding: 4px;
@@ -279,6 +285,16 @@
   .confirm-modal { max-width: 400px; }
   .confirm-modal h2 { padding-right: 0; }
 
+  .alias-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+  .alias-row:last-child { border-bottom: none; }
+  .alias-name { flex: 1 1 auto; min-width: 0; font-size: 0.88rem; }
+  .alias-name.has-alias { color: var(--text-muted); text-decoration: line-through; }
+  .alias-arrow { font-size: 0.82rem; color: var(--accent); white-space: nowrap; }
+  .alias-input {
+    font: inherit; font-size: 0.85rem; padding: 6px 9px; border-radius: 7px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text); width: 9em; flex-shrink: 0;
+  }
+
   .saved-shoplist {
     white-space: pre-wrap; font-size: 0.88rem; line-height: 1.55; max-height: 55vh; overflow-y: auto;
     background: var(--surface-2); border-radius: 10px; padding: 12px 14px; margin: 0;
@@ -321,8 +337,11 @@
 
 <div class="wrap">
   <header class="top">
-    <h1>Veckans Smaskiga Matplan</h1>
-    <p>Välj middagar och inköpslistan skapas automatiskt.</p>
+    <div>
+      <h1>Veckans Smaskiga Matplan</h1>
+      <p>Välj middagar och inköpslistan skapas automatiskt.</p>
+    </div>
+    <button type="button" id="aliasBtn" class="icon-btn" title="Ordlista för ingrediensnamn">⚙️</button>
   </header>
 
   <div id="banners"></div>
@@ -414,7 +433,11 @@
     banner: null,
     plans: [],
     plansLoading: true,
-    weekStart: toISODate(mondayOf(new Date()))
+    weekStart: toISODate(mondayOf(new Date())),
+    // Ordlista för ingrediensnamn (se Ordlista-knappen i headern): rättar
+    // t.ex. "böna" -> "bönor" automatiskt vid AI-import och manuell
+    // inmatning. Nyckel: aliaset i gemener, värde: den korrekta formen.
+    aliases: {}
   };
 
   function $(sel, root) { return (root || document).querySelector(sel); }
@@ -658,6 +681,142 @@
         showBanner("error", "Kunde inte hämta veckohistorik. " + err.message);
         render();
       });
+  }
+
+  function loadAliases() {
+    return apiFetch("/ingredient_aliases?select=*&order=alias.asc")
+      .then(function (data) {
+        var map = {};
+        (data || []).forEach(function (row) { map[row.alias.toLowerCase()] = row.canonical; });
+        state.aliases = map;
+      })
+      .catch(function (err) {
+        // Tyst fel — ordlistan är en förbättring, inte kritisk för att
+        // appen i övrigt ska fungera (t.ex. om tabellen ännu inte skapats).
+        console.warn("Kunde inte hämta ordlistan.", err);
+      });
+  }
+
+  // Byter ut ett ingrediensnamn mot dess rättade form enligt Ordlistan, om
+  // ett sådant alias finns (skiftlägesokänslig, exakt matchning). Annars
+  // returneras namnet oförändrat.
+  function applyAlias(name) {
+    var trimmed = (name || "").trim();
+    var hit = state.aliases[trimmed.toLowerCase()];
+    return hit || trimmed;
+  }
+
+  // Alla unika ingrediensnamn som förekommer i era recept just nu, en gång
+  // var (första stavningen som hittas), sorterade — underlag för Ordlistan.
+  function collectIngredientNames() {
+    var seen = {};
+    state.recipes.forEach(function (r) {
+      (r.recipe_ingredients || []).forEach(function (ing) {
+        var n = (ing.name || "").trim();
+        if (!n) return;
+        var key = n.toLowerCase();
+        if (!seen[key]) seen[key] = n;
+      });
+    });
+    return Object.keys(seen).map(function (k) { return seen[k]; }).sort(function (a, b) { return a.localeCompare(b, "sv"); });
+  }
+
+  // Sparar en rättning för ett ingrediensnamn: dels som alias för framtida
+  // importer/inmatningar, dels genom att direkt byta namnet på alla
+  // befintliga recept som har det (skiftlägesokänslig matchning) — annars
+  // skulle problemet kvarstå för recept ni redan lagt in. Ett tomt newName
+  // tar bort en tidigare rättning i stället. Returnerar löftet om hur många
+  // ingrediensrader som uppdaterades i befintliga recept.
+  function renameIngredient(oldName, newName) {
+    var key = oldName.trim().toLowerCase();
+    var chain;
+    if (!newName) {
+      delete state.aliases[key];
+      chain = apiFetch("/ingredient_aliases?alias=eq." + encodeURIComponent(oldName.trim()), { method: "DELETE" });
+    } else {
+      state.aliases[key] = newName;
+      chain = apiFetch("/ingredient_aliases?on_conflict=alias", {
+        method: "POST",
+        headers: { Prefer: "resolution=merge-duplicates" },
+        body: { alias: oldName.trim(), canonical: newName }
+      });
+    }
+    var targetName = newName || oldName.trim();
+    return chain.then(function () {
+      if (!newName) return 0;
+      // ilike utan jokertecken gör en skiftlägesokänslig EXAKT matchning i
+      // PostgREST — inte en delsträngssökning.
+      return apiFetch("/recipe_ingredients?name=ilike." + encodeURIComponent(oldName.trim()), {
+        method: "PATCH",
+        headers: { Prefer: "return=representation" },
+        body: { name: targetName }
+      }).then(function (rows) {
+        var count = (rows || []).length;
+        state.recipes.forEach(function (r) {
+          (r.recipe_ingredients || []).forEach(function (ing) {
+            if ((ing.name || "").trim().toLowerCase() === key) ing.name = targetName;
+          });
+        });
+        render();
+        return count;
+      });
+    });
+  }
+
+  function openAliasModal() {
+    var host = $("#modalRoot");
+    host.innerHTML = "";
+
+    var listHost = el("div", { style: "max-height:55vh;overflow-y:auto;" }, []);
+
+    function renderRows() {
+      listHost.innerHTML = "";
+      var names = collectIngredientNames();
+      if (!names.length) {
+        listHost.appendChild(el("div", { class: "empty" }, [text("Inga ingredienser hittade än.")]));
+        return;
+      }
+      names.forEach(function (name) {
+        var key = name.toLowerCase();
+        var current = state.aliases[key] || "";
+        var input = el("input", { class: "alias-input", type: "text", placeholder: "byt till…", value: current });
+        var saveBtn = el("button", { class: "btn small", type: "button" }, [text("Spara")]);
+        saveBtn.addEventListener("click", function () {
+          var newName = input.value.trim();
+          if (newName === current) return;
+          saveBtn.disabled = true;
+          renameIngredient(name, newName)
+            .then(function (count) {
+              saveBtn.disabled = false;
+              showBanner("info", newName
+                ? "\"" + name + "\" byts nu till \"" + newName + "\" (" + count + " rad" + (count === 1 ? "" : "er") + " uppdaterade)."
+                : "Rättningen för \"" + name + "\" togs bort.");
+              renderRows();
+            })
+            .catch(function (err) {
+              saveBtn.disabled = false;
+              showBanner("error", "Kunde inte spara. " + err.message);
+            });
+        });
+        var rowChildren = [
+          el("span", { class: "alias-name" + (current ? " has-alias" : "") }, [text(name)])
+        ];
+        if (current) rowChildren.push(el("span", { class: "alias-arrow" }, [text("→ " + current)]));
+        rowChildren.push(input, saveBtn);
+        listHost.appendChild(el("div", { class: "alias-row" }, rowChildren));
+      });
+    }
+    renderRows();
+
+    var modal = el("div", { class: "modal" }, [
+      el("button", { class: "modal-close", type: "button", title: "Stäng", onclick: function () { host.innerHTML = ""; } }, [text("✕")]),
+      el("h2", {}, [text("Ordlista för ingrediensnamn")]),
+      el("p", { style: "color:var(--text-muted);font-size:0.88rem;" }, [
+        text("Alla ingrediensnamn som används i era recept listas här. Skriv en rättning och tryck Spara för att byta namnet överallt — nu i befintliga recept, och automatiskt vid framtida importer/tillägg. Lämna tomt och spara för att ta bort en tidigare rättning.")
+      ]),
+      listHost
+    ]);
+    host.appendChild(el("div", { class: "modal-backdrop", onclick: function (e) { if (e.target === host.firstChild) host.innerHTML = ""; } }, [modal]));
   }
 
   // ---------- derived ----------
@@ -1770,7 +1929,11 @@
         formIngredients = data.ingredients.map(function (i) {
           return {
             _id: formIdCounter++,
-            name: i.name || "",
+            // Byter ut namnet mot er egen rättning om ett sådant finns i
+            // ordlistan (se Ordlista-knappen i headern) — t.ex. om AI:n
+            // envisas med att kalla det "böna" trots att ni rättat det till
+            // "bönor" tidigare.
+            name: applyAlias(i.name || ""),
             amount: (i.amount === null || i.amount === undefined || i.amount === "") ? "" : i.amount,
             unit: i.unit || "",
             category: CATEGORIES.indexOf(i.category) !== -1 ? i.category : "Övrigt",
@@ -1862,7 +2025,10 @@
         // så att samma ingrediens från olika recept slås ihop i inköpslistan.
         if (!unit && !isNaN(amt) && amt !== null) unit = "st";
         var group = (i.group || "").trim();
-        return { name: i.name.trim(), amount: isNaN(amt) ? null : amt, unit: unit || null, category: i.category || "Övrigt", group_name: group || null, sort_order: idx };
+        // Samma ordlista som vid AI-import (se applyImportedRecipe) — så en
+        // rättning man gjort i Ordlistan slår igenom även vid manuellt
+        // inmatade/redigerade ingredienser.
+        return { name: applyAlias(i.name.trim()), amount: isNaN(amt) ? null : amt, unit: unit || null, category: i.category || "Övrigt", group_name: group || null, sort_order: idx };
       });
 
     var payload = {
@@ -1915,10 +2081,12 @@
   $("#copyListBtn").addEventListener("click", copyShoppingList);
   $("#copyListWillysBtn").addEventListener("click", copyShoppingListWillys);
   $("#savePlanBtn").addEventListener("click", savePlan);
+  $("#aliasBtn").addEventListener("click", openAliasModal);
   $("#weekStartInput").value = state.weekStart;
 
   loadRecipes();
   loadPlans();
+  loadAliases();
 })();
 </script>
 </body>

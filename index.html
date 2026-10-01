@@ -437,7 +437,12 @@
     // Ordlista för ingrediensnamn (se Ordlista-knappen i headern): rättar
     // t.ex. "böna" -> "bönor" automatiskt vid AI-import och manuell
     // inmatning. Nyckel: aliaset i gemener, värde: den korrekta formen.
-    aliases: {}
+    aliases: {},
+    // Sant först när den delade "pågående veckoplanen" (current_plan,
+    // se loadDraft/scheduleDraftSave) har hämtats från databasen — innan
+    // dess ska inget sparas, annars skulle en tom startstate kunna skriva
+    // över en redan pågående plan som den andra personen byggt upp.
+    draftLoaded: false
   };
 
   function $(sel, root) { return (root || document).querySelector(sel); }
@@ -695,6 +700,55 @@
         // appen i övrigt ska fungera (t.ex. om tabellen ännu inte skapats).
         console.warn("Kunde inte hämta ordlistan.", err);
       });
+  }
+
+  // Hämtar den delade "pågående veckoplanen" (en enda rad i current_plan,
+  // se migration 013) vid start, så att valda recept, portionsjusteringar,
+  // ikryssade inköpslistevaror och kommentarer finns kvar efter omladdning
+  // — och är desamma oavsett vilken enhet eller vem som öppnar sidan.
+  function loadDraft() {
+    return apiFetch("/current_plan?id=eq.1&select=*")
+      .then(function (data) {
+        var row = (data || [])[0];
+        if (row) {
+          state.selected = new Set(row.selected_ids || []);
+          state.weekServings = row.week_servings || {};
+          state.checkedShop = new Set(row.checked_shop || []);
+          state.shopComments = row.shop_comments || {};
+        }
+        state.draftLoaded = true;
+        render();
+      })
+      .catch(function (err) {
+        // Tyst fel (t.ex. om migration 013 inte körts än) — man faller då
+        // tillbaka på det gamla beteendet (bara i sidans minne) i stället
+        // för att blockera resten av appen.
+        state.draftLoaded = true;
+        console.warn("Kunde inte hämta den delade veckoplanen.", err);
+      });
+  }
+
+  var draftSaveTimer = null;
+  // Sparar den pågående veckoplanen till den delade raden, debouncad så att
+  // snabba ändringar i rad (flera klick, skrivande i kommentarsfält) inte
+  // ger en nätverksanrop per tangenttryck.
+  function scheduleDraftSave() {
+    if (!state.draftLoaded) return;
+    clearTimeout(draftSaveTimer);
+    draftSaveTimer = setTimeout(function () {
+      apiFetch("/current_plan?id=eq.1", {
+        method: "PATCH",
+        body: {
+          selected_ids: Array.from(state.selected),
+          week_servings: state.weekServings,
+          checked_shop: Array.from(state.checkedShop),
+          shop_comments: state.shopComments,
+          updated_at: new Date().toISOString()
+        }
+      }).catch(function (err) {
+        showBanner("error", "Kunde inte spara ändringen till den delade veckoplanen. " + err.message);
+      });
+    }, 800);
   }
 
   // Byter ut ett ingrediensnamn mot dess rättade form enligt Ordlistan, om
@@ -1075,6 +1129,7 @@
     // Veckoplans-knappen på receptkorten (recept-vyn) ska spegla vald status
     // direkt, oavsett om det var den eller kryssrutan i veckovyn som klickades.
     if (state.activeTab === "recipes") renderRecipesPanel();
+    scheduleDraftSave();
   }
 
   // Justerar hur många portioner man tänker laga av ett recept DEN HÄR
@@ -1084,6 +1139,7 @@
     var current = state.weekServings[id] || baseServings;
     state.weekServings[id] = Math.max(2, current + delta);
     renderWeekPanel();
+    scheduleDraftSave();
   }
 
   // Nollställer både vilka recept som är valda för veckan och vilka varor
@@ -1097,6 +1153,7 @@
     state.shopComments = {};
     renderWeekPanel();
     showBanner("info", "Valda recept och ikryssade varor är återställda.");
+    scheduleDraftSave();
   }
 
   // Enhetsomvandling för inköpslistan: bara när SAMMA ingrediens dyker upp i
@@ -1246,6 +1303,7 @@
         cb.addEventListener("change", function () {
           if (checked) state.checkedShop.delete(key); else state.checkedShop.add(key);
           renderShoppingList();
+          scheduleDraftSave();
         });
         // Fritextkommentar per vara, t.ex. "Willys" eller "lokala marknaden"
         // — uppdaterar bara state direkt (inget renderShoppingList-anrop
@@ -1260,6 +1318,7 @@
           // Behåll fältet i sin bredare bredd så länge något är skrivet, så
           // det inte krymper tillbaka och gör texten svårläst.
           commentInput.classList.toggle("filled", !!commentInput.value.trim());
+          scheduleDraftSave();
         });
         var li = el("li", { class: checked ? "checked" : "" }, [
           cb,
@@ -1508,6 +1567,7 @@
     if (input) input.value = toISODate(mondayOf(new Date()));
     window.scrollTo({ top: 0, behavior: "smooth" });
     showBanner("info", "Recepten är valda igen. Sätt veckostart och spara för att lägga till en ny post i historiken.");
+    scheduleDraftSave();
   }
 
   // Räknar om "senast lagad"-datumet för recepten i en borttagen veckoplan,
@@ -1581,6 +1641,7 @@
                   delete state.weekServings[r.id];
                   host.innerHTML = "";
                   render();
+                  scheduleDraftSave();
                 })
                 .catch(function (err) { showBanner("error", "Kunde inte ta bort receptet. " + err.message); });
             }
@@ -2090,6 +2151,7 @@
   loadRecipes();
   loadPlans();
   loadAliases();
+  loadDraft();
 })();
 </script>
 </body>

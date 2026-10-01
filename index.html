@@ -224,10 +224,10 @@
   .shoplist .shop-name { flex: 1 1 auto; min-width: 0; }
   .shop-comment {
     font: inherit; font-size: 0.8rem; padding: 4px 8px; border-radius: 999px;
-    /* Egen, distinkt bottenfärg (samma gröna ton som taggarna) i stället
-       för var(--surface-2) — den sammanföll annars med varannan rads
-       zebra-skuggning och gjorde fältet osynligt på just de raderna. */
-    border: 1px dashed var(--border); background: var(--accent-soft); color: var(--text); width: 4em;
+    /* Ingen egen bottenfärg — fältet ska smälta in i radens bakgrund
+       (transparent, så zebra-skuggningen från .shoplist li:nth-child(even)
+       lyser igenom likadant som resten av raden). */
+    border: 1px dashed var(--border); background: transparent; color: var(--text); width: 4em;
     flex-shrink: 0; text-decoration: none !important; transition: width 0.15s ease;
   }
   .shop-comment:hover { border-style: solid; }
@@ -998,7 +998,10 @@
 
     list.forEach(function (r) {
       var bodyChildren = [
-        el("h3", {}, [text(r.name)]),
+        el("h3", {
+          style: "cursor:pointer;", title: "Visa recept",
+          onclick: function (e) { e.stopPropagation(); openDetailModal(r); }
+        }, [text(r.name)]),
         el("div", { class: "meta", style: "color:var(--text-muted);font-size:0.78rem;" }, [
           text((r.recipe_ingredients || []).length + " ingredienser · " + (r.last_cooked_at ? "senast lagad " + fmtDate(r.last_cooked_at) : "inte lagad än"))
         ])

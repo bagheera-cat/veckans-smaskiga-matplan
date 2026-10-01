@@ -217,7 +217,7 @@
      bara luta sig mot avståndet mellan namn och kommentar, särskilt på
      breda skärmar (dator) där kommentarsfältet annars hamnar långt ifrån
      namnet det hör till. */
-  .shoplist li:nth-child(even) { background: var(--surface-2); }
+  .shoplist li:nth-child(even) { background: color-mix(in srgb, var(--surface-2) 55%, var(--surface)); }
   .shoplist li input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; flex-shrink: 0; }
   .shoplist li.checked span { text-decoration: line-through; color: var(--text-muted); }
   .shoplist .qty { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-muted); min-width: 3.2em; }
@@ -227,12 +227,12 @@
     /* Ingen egen bottenfärg — fältet ska smälta in i radens bakgrund
        (transparent, så zebra-skuggningen från .shoplist li:nth-child(even)
        lyser igenom likadant som resten av raden). */
-    border: 1px dashed var(--border); background: transparent; color: var(--text); width: 4em;
+    border: 1px solid var(--border); background: transparent; color: var(--text); width: 4em;
     flex-shrink: 0; text-decoration: none !important; transition: width 0.15s ease;
   }
-  .shop-comment:hover { border-style: solid; }
+  .shop-comment:hover { border-color: var(--accent); }
   .shop-comment:focus, .shop-comment.filled { width: 8em; }
-  .shop-comment:focus { border-style: solid; border-color: var(--accent); background: var(--surface); outline: none; }
+  .shop-comment:focus { border-color: var(--accent); background: var(--surface); outline: none; }
   .shop-comment::placeholder { color: var(--text-muted); opacity: 0.7; }
 
   .modal-backdrop {
